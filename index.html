@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>選手資料輸入</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-2: #eef2f5;
+      --text: #1d2730;
+      --muted: #617080;
+      --line: #d8e0e7;
+      --accent: #16785f;
+      --accent-strong: #0f604b;
+      --danger: #b64242;
+      --focus: #2b87d3;
+      --shadow: 0 10px 24px rgba(24, 38, 53, 0.08);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0 12px;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover { border-color: #bac7d1; }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 22px;
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .tabs,
+    .top-actions,
+    .mode-control,
+    .output-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tabs {
+      padding: 3px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .tab-button {
+      min-height: 32px;
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .tab-button[aria-selected="true"] {
+      background: white;
+      border-color: #c8d3dc;
+      box-shadow: 0 1px 3px rgba(24, 38, 53, 0.08);
+    }
+
+    .mode-control {
+      gap: 6px;
+    }
+
+    .mode-control label {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    select {
+      min-height: 36px;
+      border: 1px solid #c8d3dc;
+      border-radius: 6px;
+      background: white;
+      color: var(--text);
+      padding: 0 32px 0 10px;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .primary:hover {
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+    }
+
+    .danger { color: var(--danger); }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(340px, 0.42fr);
+      gap: 18px;
+      padding: 18px;
+      align-items: start;
+    }
+
+    .sheet,
+    .output {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .sheet-header,
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+
+    .sheet-tools {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .count {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 132px);
+    }
+
+    table {
+      width: 100%;
+      min-width: var(--table-min-width, 1510px);
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f7f9fb;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .w-name { width: 104px; }
+    .w-pos { width: 124px; }
+    .w-team { width: 94px; }
+    .w-series { width: 112px; }
+    .w-num { width: 84px; }
+    .w-grade { width: 82px; }
+    .w-note { width: 96px; }
+    .w-stat-small { width: 72px; }
+    .w-slash { width: 132px; }
+    .w-pitch { width: 130px; }
+    .w-extra { width: 150px; }
+    .w-actions { width: 116px; }
+
+    .metadata-folded table { min-width: 1120px; }
+    .metadata-folded .metadata-col { display: none; }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #c8d3dc;
+      border-radius: 6px;
+      background: white;
+      color: var(--text);
+      padding: 7px 8px;
+      min-height: 34px;
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #98a5b1;
+    }
+
+    .compact-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .icon-btn {
+      min-width: 36px;
+      padding: 0;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .output {
+      position: sticky;
+      top: 76px;
+    }
+
+    .output textarea {
+      display: block;
+      min-height: calc(100vh - 182px);
+      border: 0;
+      border-radius: 0;
+      resize: none;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre;
+    }
+
+    .status {
+      min-height: 18px;
+      padding: 0 14px 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        padding: 12px;
+      }
+
+      .output { position: static; }
+      .output textarea { min-height: 360px; }
+      .table-wrap { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>選手資料輸入</h1>
+      <div class="tabs" role="tablist" aria-label="選手類型">
+        <button type="button" class="tab-button" id="hittersTab" role="tab" aria-selected="true" data-sheet="hitters">打者</button>
+        <button type="button" class="tab-button" id="pitchersTab" role="tab" aria-selected="false" data-sheet="pitchers">投手</button>
+      </div>
+      <div class="top-actions">
+        <div class="mode-control">
+          <label for="modeSelect">模式</label>
+          <select id="modeSelect">
+            <option value="pawapuro">Pawapuro</option>
+            <option value="prospi">Prospi</option>
+          </select>
+        </div>
+        <button type="button" id="addPlayer" class="primary">新增選手</button>
+        <button type="button" id="copyJson">複製 JSON</button>
+        <button type="button" id="downloadJson">下載 JSON</button>
+        <button type="button" id="importJson">匯入 JSON</button>
+        <input type="file" id="jsonFile" accept="application/json,.json" hidden>
+        <button type="button" id="resetSample">重設範例</button>
+      </div>
+    </header>
+
+    <section class="workspace" aria-label="選手資料工作區">
+      <div class="sheet">
+        <div class="sheet-header">
+          <strong id="sheetTitle">資料表</strong>
+          <div class="sheet-tools">
+            <button type="button" id="toggleMetadata" aria-pressed="false">收合資料</button>
+            <span class="count" id="playerCount"></span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr id="headerRow"></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <aside class="output" aria-label="JSON 輸出">
+        <div class="output-header">
+          <strong>輸出 JSON</strong>
+          <div class="output-actions">
+            <button type="button" id="copyJsonSide">複製</button>
+          </div>
+        </div>
+        <textarea id="outputText" spellcheck="false" readonly></textarea>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const APP_STORAGE_KEY = "game-stat-json-v2";
+    const FOLD_STORAGE_KEY = "game-stat-metadata-folded-v2";
+    const SCHEMA_VERSION = 2;
+
+    const rowsEl = document.querySelector("#rows");
+    const headerRowEl = document.querySelector("#headerRow");
+    const outputEl = document.querySelector("#outputText");
+    const countEl = document.querySelector("#playerCount");
+    const statusEl = document.querySelector("#status");
+    const tableWrapEl = document.querySelector(".table-wrap");
+    const metadataButtonEl = document.querySelector("#toggleMetadata");
+    const addButtonEl = document.querySelector("#addPlayer");
+    const modeSelectEl = document.querySelector("#modeSelect");
+    const jsonFileEl = document.querySelector("#jsonFile");
+    const sheetTitleEl = document.querySelector("#sheetTitle");
+    const tabButtons = [...document.querySelectorAll(".tab-button")];
+
+    const prospiMetadataColumns = [
+      { field: "positions", label: "位置", placeholder: "3B/1B/LF", className: "w-pos", metadata: true },
+      { field: "team", label: "球隊", placeholder: "火腿", className: "w-team", metadata: true },
+      { field: "series", label: "Series", placeholder: "25 S1 EX", className: "w-series", metadata: true },
+      { field: "currentSpirit", label: "目前", placeholder: "4900", className: "w-num", metadata: true },
+      { field: "trainableSpirit", label: "可練成", placeholder: "5000", className: "w-num", metadata: true },
+      { field: "maxSpirit", label: "最高", placeholder: "5200", className: "w-num", metadata: true },
+      { field: "grade", label: "評價", placeholder: "SS", className: "w-grade", metadata: true },
+      { field: "note", label: "備註", placeholder: "OB", className: "w-note", metadata: true }
+    ];
+
+    const pawapuroHitterMetadataColumns = [
+      { field: "age", label: "年紀", placeholder: "19", className: "w-stat-small", metadata: true },
+      { field: "positions", label: "守備位置", placeholder: "CF=RF=LF", className: "w-pos", metadata: true },
+      { field: "contact", label: "打擊", placeholder: "S", className: "w-grade", metadata: true },
+      { field: "power", label: "力量", placeholder: "A", className: "w-grade", metadata: true },
+      { field: "speed", label: "跑速", placeholder: "A", className: "w-grade", metadata: true },
+      { field: "arm", label: "肩力", placeholder: "A", className: "w-grade", metadata: true },
+      { field: "fielding", label: "守備判斷", placeholder: "C", className: "w-grade", metadata: true },
+      { field: "note", label: "備註", placeholder: "", className: "w-note", metadata: true }
+    ];
+
+    const pawapuroPitcherMetadataColumns = [
+      { field: "age", label: "年紀", placeholder: "27", className: "w-stat-small", metadata: true },
+      { field: "handedness", label: "左右投", placeholder: "RHP", className: "w-grade", metadata: true },
+      { field: "velocity", label: "球速", placeholder: "157", className: "w-stat-small", metadata: true },
+      { field: "control", label: "控球", placeholder: "C", className: "w-grade", metadata: true },
+      { field: "stamina", label: "體力", placeholder: "C", className: "w-grade", metadata: true },
+      { field: "primaryPitch", label: "決勝變化球", placeholder: "knucklecurve-3", className: "w-pitch", metadata: true },
+      { field: "secondaryPitch", label: "第二變化球", placeholder: "slider-2", className: "w-pitch", metadata: true },
+      { field: "note", label: "備註", placeholder: "cl-ok", className: "w-note", metadata: true }
+    ];
+
+    const hitterStatColumns = [
+      { field: "pa", label: "PA", placeholder: "93", className: "w-stat-small" },
+      { field: "slashLine", label: "AVG/OBP/SLG", placeholder: ".407/.409/.615", className: "w-slash" },
+      { field: "hr", label: "HR", placeholder: "3", className: "w-stat-small" },
+      { field: "rbi", label: "RBI", placeholder: "12", className: "w-stat-small" },
+      { field: "sb", label: "SB", placeholder: "3", className: "w-stat-small" },
+      { field: "k", label: "K", placeholder: "", className: "w-stat-small" },
+      { field: "bb", label: "BB", placeholder: "", className: "w-stat-small" },
+      { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
+    ];
+
+    const pitcherStatColumns = [
+      { field: "gp", label: "GP", placeholder: "10", className: "w-stat-small" },
+      { field: "ip", label: "IP", placeholder: "11.1", className: "w-stat-small" },
+      { field: "era", label: "ERA", placeholder: "3.18", className: "w-stat-small" },
+      { field: "whip", label: "WHIP", placeholder: "0.88", className: "w-stat-small" },
+      { field: "fip", label: "FIP", placeholder: "2.19", className: "w-stat-small" },
+      { field: "k", label: "K", placeholder: "7", className: "w-stat-small" },
+      { field: "bb", label: "BB", placeholder: "", className: "w-stat-small" },
+      { field: "h", label: "H", placeholder: "", className: "w-stat-small" },
+      { field: "hr", label: "HR", placeholder: "0", className: "w-stat-small" },
+      { field: "hp", label: "HP", placeholder: "4", className: "w-stat-small" },
+      { field: "w", label: "W", placeholder: "", className: "w-stat-small" },
+      { field: "l", label: "L", placeholder: "", className: "w-stat-small" },
+      { field: "hld", label: "HLD", placeholder: "", className: "w-stat-small" },
+      { field: "sv", label: "SV", placeholder: "2", className: "w-stat-small" },
+      { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
+    ];
+
+    const nameColumn = { field: "name", label: "選手", placeholder: "清宮", className: "w-name" };
+
+    const pawapuroHitters = [
+      hitter("辰己克", "", "CF=RF=LF", "SAAAC", "93", ".407/.409/.615", "3", "12", "3"),
+      hitter("野村", "", "3B=1B", "CBDDD", "93", ".391/.398/.761", "10", "25", "0"),
+      hitter("村上", "", "1B>3B", "DACCE", "93", ".391/.398/.783", "9", "21", "2"),
+      hitter("Reyes", "", "1B", "CADCF", "82", ".425/.427/.813", "9", "23", "0"),
+      hitter("水谷", "", "LF=RF>CF", "DCACC", "80", ".372/.388/.615", "4", "15", "2"),
+      hitter("西海", "", "LF=RF", "DADBE", "63", ".413/.413/.698", "5", "15", "3"),
+      hitter("進藤", "", "C", "DCDBC", "62", ".317/.339/.517", "3", "9", "0"),
+      hitter("荒木", "", "2B", "BDADD?", "61", ".344/.344/.426", "0", "6", "6"),
+      hitter("田宮", "", "C=LF=RF", "CDCAC", "46", ".304/.304/.326", "0", "3", "1"),
+      hitter("上川畑", "", "SS=2B>3B", "CECBC", "41", ".359/.350/.487", "0", "4", "0")
+    ];
+
+    const pawapuroPitchers = [
+      pitcher("山岡", "31", "RHP", "150", "C", "C", "v-slider-5", "cutter-2", "cl-ok", "10", "11.1", "3.18", "0.88", "2.19", "7", "0", "4", "2"),
+      pitcher("生駒", "20", "RHP", "146", "D", "D", "splitter-5", "12-6-curve-2", "", "9", "11.1", "2.38", "1.24", "5.25", "6", "2", "3", "1"),
+      pitcher("孫", "22", "RHP", "156", "E", "D", "circlechange-4", "forkball-3", "cl-ok", "8", "8", "3.38", "1.50", "2.83", "4", "0", "5", "0"),
+      pitcher("柳川", "24", "RHP", "156", "C", "E", "cutter-3", "forkball-3", "cl-ok", "7", "6", "7.50", "1.33", "8.28", "5", "3", "1", "3"),
+      pitcher("松浦", "24", "LHP", "155", "E", "E", "cutter-3", "forkball-2", "", "7", "8.1", "1.08", "1.08", "3.08", "3", "0", "3", "0"),
+      pitcher("矢澤", "27", "LHP", "152", "C", "E", "v-slider-4", "sweeper-2", "cl-ok", "5", "4.2", "9.64", "3.00", "2.26", "4", "0", "2", "0"),
+      pitcher("山野", "28", "LHP", "150", "E", "C", "sweeper-3", "forkball-2", "", "5", "5.2", "3.18", "1.41", "5.95", "3", "1", "1", "0"),
+      pitcher("川崎", "21", "LHP", "147", "C", "C", "screwball-4", "12-6-curve-2", "cl-ok", "4", "5", "5.40", "1.60", "3.65", "6", "1", "1", "0"),
+      pitcher("堀", "29", "LHP", "149", "C", "D", "sweeper-4", "changeup-1", "cl-ok", "4", "2.2", "16.8", "3.38", "2.09", "3", "0", "1", "0"),
+      pitcher("細野", "25", "LHP", "155", "D", "D", "slurve-3", "curve-2", "cl-ok", "3", "3.2", "12.2", "2.42", "2.52", "3", "0", "0", "0")
+    ];
+
+    const prospiHitters = [
+      { name: "清宮", positions: "3B/1B/LF", team: "火腿", series: "25 S1 EX", currentSpirit: "4900", trainableSpirit: "4900", maxSpirit: "4900", grade: "A", note: "", pa: "529", slashLine: ".283/.348/.424", hr: "14", rbi: "65", sb: "0", k: "92", bb: "47", extraStats: "" },
+      { name: "T. Woods", positions: "1B", team: "DeNA", series: "25 S2 OB", currentSpirit: "4900", trainableSpirit: "4900", maxSpirit: "5000", grade: "SS", note: "OB", pa: "413", slashLine: ".292/.368/.466", hr: "16", rbi: "67", sb: "", k: "", bb: "", extraStats: "" },
+      { name: "牧", positions: "2B/1B", team: "DeNA", series: "25 S2 侍", currentSpirit: "4947", trainableSpirit: "5000", maxSpirit: "5100", grade: "SS", note: "", pa: "523", slashLine: ".284/.380/.427", hr: "11", rbi: "52", sb: "4", k: "88", bb: "69", extraStats: "" }
+    ];
+
+    const prospiPitchers = [
+      { positions: "SP", name: "外木場", team: "廣島", series: "25 S2 OB", currentSpirit: "4850", trainableSpirit: "4850", maxSpirit: "5000", grade: "A", note: "退役" },
+      { positions: "SP", name: "伊藤", team: "火腿", series: "25 S1", currentSpirit: "4800", trainableSpirit: "4800", maxSpirit: "4900", grade: "A", note: "26 S1 版為SS" },
+      { positions: "RP/CP", name: "則本", team: "樂天", series: "25 S1", currentSpirit: "4850", trainableSpirit: "4850", maxSpirit: "4900", grade: "A", note: "26以後在巨人" }
+    ];
+
+    const modes = {
+      prospi: {
+        label: "Prospi",
+        sheets: {
+          hitters: makeSheet("打者", [...prospiMetadataColumns, ...hitterStatColumns], prospiHitters),
+          pitchers: makeSheet("投手", [...prospiMetadataColumns, ...pitcherStatColumns], prospiPitchers)
+        }
+      },
+      pawapuro: {
+        label: "Pawapuro",
+        sheets: {
+          hitters: makeSheet("打者", [...pawapuroHitterMetadataColumns, ...hitterStatColumns], pawapuroHitters),
+          pitchers: makeSheet("投手", [...pawapuroPitcherMetadataColumns, ...pitcherStatColumns], pawapuroPitchers)
+        }
+      }
+    };
+
+    const defaultState = {
+      schemaVersion: SCHEMA_VERSION,
+      activeMode: "pawapuro",
+      activeSheet: "hitters",
+      sheets: Object.fromEntries(Object.entries(modes).map(([modeKey, mode]) => [
+        modeKey,
+        Object.fromEntries(Object.entries(mode.sheets).map(([sheetKey, sheet]) => [
+          sheetKey,
+          sheet.samples.map((player) => normalizePlayer(modeKey, sheetKey, player))
+        ]))
+      ]))
+    };
+
+    let state = loadState();
+    let metadataFolded = localStorage.getItem(FOLD_STORAGE_KEY) === "true";
+
+    function hitter(name, age, positions, ratings, pa, slashLine, hr, rbi, sb) {
+      const [contact = "", power = "", speed = "", arm = "", ...fieldingParts] = ratings.split("");
+      return {
+        name,
+        age,
+        positions,
+        contact,
+        power,
+        speed,
+        arm,
+        fielding: fieldingParts.join(""),
+        note: "",
+        pa,
+        slashLine,
+        hr,
+        rbi,
+        sb,
+        k: "",
+        bb: "",
+        extraStats: ""
+      };
+    }
+
+    function pitcher(name, age, handedness, velocity, control, stamina, primaryPitch, secondaryPitch, note, gp, ip, era, whip, fip, k, hr, hp, sv) {
+      return {
+        name,
+        age,
+        handedness,
+        velocity,
+        control,
+        stamina,
+        primaryPitch,
+        secondaryPitch,
+        note,
+        gp,
+        ip,
+        era,
+        whip,
+        fip,
+        k,
+        bb: "",
+        h: "",
+        hr,
+        hp,
+        w: "",
+        l: "",
+        hld: "",
+        sv,
+        extraStats: ""
+      };
+    }
+
+    function makeSheet(label, columns, samples) {
+      return {
+        label,
+        addLabel: `新增${label}`,
+        columns: [nameColumn, ...columns],
+        samples,
+        empty: () => normalizeByColumns([nameColumn, ...columns], {})
+      };
+    }
+
+    function getSheetConfig(modeKey = state.activeMode, sheetKey = state.activeSheet) {
+      return modes[modeKey].sheets[sheetKey];
+    }
+
+    function normalizeByColumns(columns, player = {}) {
+      return Object.fromEntries(columns.map((column) => [column.field, String(player[column.field] ?? "")]));
+    }
+
+    function normalizePlayer(modeKey, sheetKey, player = {}) {
+      return normalizeByColumns(modes[modeKey].sheets[sheetKey].columns, player);
+    }
+
+    function normalizeSheetData(modeKey, sheetKey, players) {
+      const source = Array.isArray(players) ? players : [];
+      return source.map((player) => normalizePlayer(modeKey, sheetKey, player));
+    }
+
+    function normalizeState(input = {}) {
+      const nextState = {
+        schemaVersion: SCHEMA_VERSION,
+        activeMode: modes[input.activeMode] ? input.activeMode : "pawapuro",
+        activeSheet: ["hitters", "pitchers"].includes(input.activeSheet) ? input.activeSheet : "hitters",
+        sheets: structuredClone(defaultState.sheets)
+      };
+
+      Object.keys(modes).forEach((modeKey) => {
+        Object.keys(modes[modeKey].sheets).forEach((sheetKey) => {
+          const imported = input.sheets?.[modeKey]?.[sheetKey];
+          if (Array.isArray(imported)) {
+            nextState.sheets[modeKey][sheetKey] = normalizeSheetData(modeKey, sheetKey, imported);
+          }
+        });
+      });
+
+      return nextState;
+    }
+
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(APP_STORAGE_KEY);
+        if (saved) return normalizeState(JSON.parse(saved));
+      } catch (error) {
+        console.warn(error);
+      }
+      return normalizeState(defaultState);
+    }
+
+    function saveState() {
+      localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(buildExport()));
+    }
+
+    function buildExport() {
+      return {
+        schemaVersion: SCHEMA_VERSION,
+        activeMode: state.activeMode,
+        activeSheet: state.activeSheet,
+        sheets: state.sheets
+      };
+    }
+
+    function getActivePlayers() {
+      state.sheets[state.activeMode] ??= {};
+      state.sheets[state.activeMode][state.activeSheet] ??= [];
+      return state.sheets[state.activeMode][state.activeSheet];
+    }
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+      window.clearTimeout(setStatus.timer);
+      setStatus.timer = window.setTimeout(() => {
+        statusEl.textContent = "";
+      }, 2400);
+    }
+
+    function applyMetadataFold() {
+      tableWrapEl.classList.toggle("metadata-folded", metadataFolded);
+      metadataButtonEl.textContent = metadataFolded ? "展開資料" : "收合資料";
+      metadataButtonEl.setAttribute("aria-pressed", String(metadataFolded));
+      metadataButtonEl.title = metadataFolded ? "顯示 metadata 欄位" : "隱藏 metadata 欄位";
+    }
+
+    function renderHeader() {
+      headerRowEl.innerHTML = "";
+      getSheetConfig().columns.forEach((column) => {
+        const th = document.createElement("th");
+        th.className = `${column.className}${column.metadata ? " metadata-col" : ""}`;
+        th.textContent = column.label;
+        headerRowEl.append(th);
+      });
+      const actionsTh = document.createElement("th");
+      actionsTh.className = "w-actions";
+      actionsTh.textContent = "操作";
+      headerRowEl.append(actionsTh);
+    }
+
+    function render() {
+      const sheet = getSheetConfig();
+      const players = getActivePlayers();
+      renderHeader();
+      rowsEl.innerHTML = "";
+
+      players.forEach((player, index) => {
+        const tr = document.createElement("tr");
+        sheet.columns.forEach((column) => {
+          const td = document.createElement("td");
+          if (column.metadata) td.className = "metadata-col";
+          const input = document.createElement("input");
+          input.value = player[column.field];
+          input.placeholder = column.placeholder;
+          input.dataset.index = index;
+          input.dataset.field = column.field;
+          td.append(input);
+          tr.append(td);
+        });
+
+        const actionTd = document.createElement("td");
+        const actions = document.createElement("div");
+        actions.className = "compact-actions";
+        actions.append(
+          makeActionButton("↑", "上移", () => movePlayer(index, -1), index === 0),
+          makeActionButton("↓", "下移", () => movePlayer(index, 1), index === players.length - 1),
+          makeActionButton("+", "複製", () => duplicatePlayer(index), false),
+          makeActionButton("×", "刪除", () => removePlayer(index), players.length === 1, "danger")
+        );
+        actionTd.append(actions);
+        tr.append(actionTd);
+        rowsEl.append(tr);
+      });
+
+      modeSelectEl.value = state.activeMode;
+      tabButtons.forEach((button) => button.setAttribute("aria-selected", String(button.dataset.sheet === state.activeSheet)));
+      addButtonEl.textContent = sheet.addLabel;
+      sheetTitleEl.textContent = `${modes[state.activeMode].label} ${sheet.label}`;
+      outputEl.value = JSON.stringify(buildExport(), null, 2);
+      countEl.textContent = `${players.length} 位${sheet.label}`;
+      tableWrapEl.style.setProperty("--table-min-width", state.activeSheet === "pitchers" ? "1840px" : "1510px");
+      applyMetadataFold();
+      saveState();
+    }
+
+    function makeActionButton(text, label, onClick, disabled = false, className = "") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `icon-btn ${className}`.trim();
+      button.textContent = text;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.disabled = disabled;
+      button.addEventListener("click", onClick);
+      return button;
+    }
+
+    function addPlayer() {
+      getActivePlayers().push(getSheetConfig().empty());
+      render();
+      rowsEl.querySelector("tr:last-child input")?.focus();
+    }
+
+    function removePlayer(index) {
+      getActivePlayers().splice(index, 1);
+      render();
+    }
+
+    function duplicatePlayer(index) {
+      const players = getActivePlayers();
+      players.splice(index + 1, 0, { ...players[index] });
+      render();
+    }
+
+    function movePlayer(index, offset) {
+      const players = getActivePlayers();
+      const nextIndex = index + offset;
+      if (nextIndex < 0 || nextIndex >= players.length) return;
+      const [player] = players.splice(index, 1);
+      players.splice(nextIndex, 0, player);
+      render();
+    }
+
+    function switchSheet(sheetKey) {
+      if (!modes[state.activeMode].sheets[sheetKey] || sheetKey === state.activeSheet) return;
+      state.activeSheet = sheetKey;
+      render();
+    }
+
+    function switchMode(modeKey) {
+      if (!modes[modeKey] || modeKey === state.activeMode) return;
+      state.activeMode = modeKey;
+      render();
+    }
+
+    async function copyOutput() {
+      outputEl.value = JSON.stringify(buildExport(), null, 2);
+      outputEl.select();
+      try {
+        await navigator.clipboard.writeText(outputEl.value);
+        setStatus("已複製 JSON 到剪貼簿");
+      } catch (error) {
+        document.execCommand("copy");
+        setStatus("已選取 JSON 並嘗試複製");
+      }
+    }
+
+    function downloadOutput() {
+      const blob = new Blob([JSON.stringify(buildExport(), null, 2)], { type: "application/json;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "game-stat.json";
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setStatus("已下載 game-stat.json");
+    }
+
+    function importJsonFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.addEventListener("load", () => {
+        try {
+          state = normalizeState(JSON.parse(String(reader.result)));
+          render();
+          setStatus("已匯入 JSON");
+        } catch (error) {
+          console.warn(error);
+          setStatus("JSON 格式不正確");
+        } finally {
+          jsonFileEl.value = "";
+        }
+      });
+      reader.readAsText(file);
+    }
+
+    rowsEl.addEventListener("input", (event) => {
+      const { index, field } = event.target.dataset;
+      if (index === undefined || !field) return;
+      getActivePlayers()[Number(index)][field] = event.target.value;
+      outputEl.value = JSON.stringify(buildExport(), null, 2);
+      saveState();
+    });
+
+    tabButtons.forEach((button) => button.addEventListener("click", () => switchSheet(button.dataset.sheet)));
+    modeSelectEl.addEventListener("change", () => switchMode(modeSelectEl.value));
+    metadataButtonEl.addEventListener("click", () => {
+      metadataFolded = !metadataFolded;
+      localStorage.setItem(FOLD_STORAGE_KEY, String(metadataFolded));
+      applyMetadataFold();
+    });
+    addButtonEl.addEventListener("click", addPlayer);
+    document.querySelector("#copyJson").addEventListener("click", copyOutput);
+    document.querySelector("#copyJsonSide").addEventListener("click", copyOutput);
+    document.querySelector("#downloadJson").addEventListener("click", downloadOutput);
+    document.querySelector("#importJson").addEventListener("click", () => jsonFileEl.click());
+    jsonFileEl.addEventListener("change", () => importJsonFile(jsonFileEl.files?.[0]));
+    document.querySelector("#resetSample").addEventListener("click", () => {
+      const sheet = getSheetConfig();
+      state.sheets[state.activeMode][state.activeSheet] = sheet.samples.map((player) => normalizePlayer(state.activeMode, state.activeSheet, player));
+      render();
+      setStatus(`已重設 ${modes[state.activeMode].label} ${sheet.label} 範例資料`);
+    });
+
+    render();
+  </script>
+</body>
+</html>
