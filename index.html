@@ -376,7 +376,21 @@
   </main>
 
   <script>
-    const APP_STORAGE_KEY = "game-stat-json-v2";
+    const MODE_STORAGE_KEYS = {
+      pawapuro: "game-stat-pawapuro-json-v1",
+      prospi: "game-stat-prospi-json-v1"
+    };
+    const MODE_DATA_FILES = {
+      pawapuro: "data/pawapuro.json",
+      prospi: "data/prospi.json"
+    };
+    const LEGACY_COMBINED_STORAGE_KEY = "game-stat-json-v2";
+    const LEGACY_PROSPI_STORAGE_KEYS = {
+      hitters: "game-stat-player-sheet-v1",
+      pitchers: "game-stat-pitcher-sheet-v1"
+    };
+    const ACTIVE_MODE_KEY = "game-stat-active-mode-v2";
+    const ACTIVE_SHEET_KEY = "game-stat-active-sheet-v2";
     const FOLD_STORAGE_KEY = "game-stat-metadata-folded-v2";
     const SCHEMA_VERSION = 2;
 
@@ -447,7 +461,7 @@
       { field: "bb", label: "BB", placeholder: "", className: "w-stat-small" },
       { field: "h", label: "H", placeholder: "", className: "w-stat-small" },
       { field: "hr", label: "HR", placeholder: "0", className: "w-stat-small" },
-      { field: "hp", label: "HP", placeholder: "4", className: "w-stat-small" },
+      { field: "hbp", label: "HBP", placeholder: "0", className: "w-stat-small" },
       { field: "w", label: "W", placeholder: "", className: "w-stat-small" },
       { field: "l", label: "L", placeholder: "", className: "w-stat-small" },
       { field: "hld", label: "HLD", placeholder: "", className: "w-stat-small" },
@@ -455,137 +469,38 @@
       { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
     ];
 
-    const nameColumn = { field: "name", label: "選手", placeholder: "清宮", className: "w-name" };
-
-    const pawapuroHitters = [
-      hitter("辰己克", "", "CF=RF=LF", "SAAAC", "93", ".407/.409/.615", "3", "12", "3"),
-      hitter("野村", "", "3B=1B", "CBDDD", "93", ".391/.398/.761", "10", "25", "0"),
-      hitter("村上", "", "1B>3B", "DACCE", "93", ".391/.398/.783", "9", "21", "2"),
-      hitter("Reyes", "", "1B", "CADCF", "82", ".425/.427/.813", "9", "23", "0"),
-      hitter("水谷", "", "LF=RF>CF", "DCACC", "80", ".372/.388/.615", "4", "15", "2"),
-      hitter("西海", "", "LF=RF", "DADBE", "63", ".413/.413/.698", "5", "15", "3"),
-      hitter("進藤", "", "C", "DCDBC", "62", ".317/.339/.517", "3", "9", "0"),
-      hitter("荒木", "", "2B", "BDADD?", "61", ".344/.344/.426", "0", "6", "6"),
-      hitter("田宮", "", "C=LF=RF", "CDCAC", "46", ".304/.304/.326", "0", "3", "1"),
-      hitter("上川畑", "", "SS=2B>3B", "CECBC", "41", ".359/.350/.487", "0", "4", "0")
-    ];
-
-    const pawapuroPitchers = [
-      pitcher("山岡", "31", "RHP", "150", "C", "C", "v-slider-5", "cutter-2", "cl-ok", "10", "11.1", "3.18", "0.88", "2.19", "7", "0", "4", "2"),
-      pitcher("生駒", "20", "RHP", "146", "D", "D", "splitter-5", "12-6-curve-2", "", "9", "11.1", "2.38", "1.24", "5.25", "6", "2", "3", "1"),
-      pitcher("孫", "22", "RHP", "156", "E", "D", "circlechange-4", "forkball-3", "cl-ok", "8", "8", "3.38", "1.50", "2.83", "4", "0", "5", "0"),
-      pitcher("柳川", "24", "RHP", "156", "C", "E", "cutter-3", "forkball-3", "cl-ok", "7", "6", "7.50", "1.33", "8.28", "5", "3", "1", "3"),
-      pitcher("松浦", "24", "LHP", "155", "E", "E", "cutter-3", "forkball-2", "", "7", "8.1", "1.08", "1.08", "3.08", "3", "0", "3", "0"),
-      pitcher("矢澤", "27", "LHP", "152", "C", "E", "v-slider-4", "sweeper-2", "cl-ok", "5", "4.2", "9.64", "3.00", "2.26", "4", "0", "2", "0"),
-      pitcher("山野", "28", "LHP", "150", "E", "C", "sweeper-3", "forkball-2", "", "5", "5.2", "3.18", "1.41", "5.95", "3", "1", "1", "0"),
-      pitcher("川崎", "21", "LHP", "147", "C", "C", "screwball-4", "12-6-curve-2", "cl-ok", "4", "5", "5.40", "1.60", "3.65", "6", "1", "1", "0"),
-      pitcher("堀", "29", "LHP", "149", "C", "D", "sweeper-4", "changeup-1", "cl-ok", "4", "2.2", "16.8", "3.38", "2.09", "3", "0", "1", "0"),
-      pitcher("細野", "25", "LHP", "155", "D", "D", "slurve-3", "curve-2", "cl-ok", "3", "3.2", "12.2", "2.42", "2.52", "3", "0", "0", "0")
-    ];
-
-    const prospiHitters = [
-      { name: "清宮", positions: "3B/1B/LF", team: "火腿", series: "25 S1 EX", currentSpirit: "4900", trainableSpirit: "4900", maxSpirit: "4900", grade: "A", note: "", pa: "529", slashLine: ".283/.348/.424", hr: "14", rbi: "65", sb: "0", k: "92", bb: "47", extraStats: "" },
-      { name: "T. Woods", positions: "1B", team: "DeNA", series: "25 S2 OB", currentSpirit: "4900", trainableSpirit: "4900", maxSpirit: "5000", grade: "SS", note: "OB", pa: "413", slashLine: ".292/.368/.466", hr: "16", rbi: "67", sb: "", k: "", bb: "", extraStats: "" },
-      { name: "牧", positions: "2B/1B", team: "DeNA", series: "25 S2 侍", currentSpirit: "4947", trainableSpirit: "5000", maxSpirit: "5100", grade: "SS", note: "", pa: "523", slashLine: ".284/.380/.427", hr: "11", rbi: "52", sb: "4", k: "88", bb: "69", extraStats: "" }
-    ];
-
-    const prospiPitchers = [
-      { positions: "SP", name: "外木場", team: "廣島", series: "25 S2 OB", currentSpirit: "4850", trainableSpirit: "4850", maxSpirit: "5000", grade: "A", note: "退役" },
-      { positions: "SP", name: "伊藤", team: "火腿", series: "25 S1", currentSpirit: "4800", trainableSpirit: "4800", maxSpirit: "4900", grade: "A", note: "26 S1 版為SS" },
-      { positions: "RP/CP", name: "則本", team: "樂天", series: "25 S1", currentSpirit: "4850", trainableSpirit: "4850", maxSpirit: "4900", grade: "A", note: "26以後在巨人" }
-    ];
+    const nameColumn = { field: "name", label: "選手", placeholder: "選手名", className: "w-name" };
 
     const modes = {
       prospi: {
         label: "Prospi",
         sheets: {
-          hitters: makeSheet("打者", [...prospiMetadataColumns, ...hitterStatColumns], prospiHitters),
-          pitchers: makeSheet("投手", [...prospiMetadataColumns, ...pitcherStatColumns], prospiPitchers)
+          hitters: makeSheet("打者", [...prospiMetadataColumns, ...hitterStatColumns]),
+          pitchers: makeSheet("投手", [...prospiMetadataColumns, ...pitcherStatColumns])
         }
       },
       pawapuro: {
         label: "Pawapuro",
         sheets: {
-          hitters: makeSheet("打者", [...pawapuroHitterMetadataColumns, ...hitterStatColumns], pawapuroHitters),
-          pitchers: makeSheet("投手", [...pawapuroPitcherMetadataColumns, ...pitcherStatColumns], pawapuroPitchers)
+          hitters: makeSheet("打者", [...pawapuroHitterMetadataColumns, ...hitterStatColumns]),
+          pitchers: makeSheet("投手", [...pawapuroPitcherMetadataColumns, ...pitcherStatColumns])
         }
       }
     };
 
-    const defaultState = {
+    const state = {
       schemaVersion: SCHEMA_VERSION,
-      activeMode: "pawapuro",
-      activeSheet: "hitters",
-      sheets: Object.fromEntries(Object.entries(modes).map(([modeKey, mode]) => [
-        modeKey,
-        Object.fromEntries(Object.entries(mode.sheets).map(([sheetKey, sheet]) => [
-          sheetKey,
-          sheet.samples.map((player) => normalizePlayer(modeKey, sheetKey, player))
-        ]))
-      ]))
+      activeMode: modes[localStorage.getItem(ACTIVE_MODE_KEY)] ? localStorage.getItem(ACTIVE_MODE_KEY) : "pawapuro",
+      activeSheet: ["hitters", "pitchers"].includes(localStorage.getItem(ACTIVE_SHEET_KEY)) ? localStorage.getItem(ACTIVE_SHEET_KEY) : "hitters"
     };
-
-    let state = loadState();
+    const modeDataCache = {};
     let metadataFolded = localStorage.getItem(FOLD_STORAGE_KEY) === "true";
 
-    function hitter(name, age, positions, ratings, pa, slashLine, hr, rbi, sb) {
-      const [contact = "", power = "", speed = "", arm = "", ...fieldingParts] = ratings.split("");
-      return {
-        name,
-        age,
-        positions,
-        contact,
-        power,
-        speed,
-        arm,
-        fielding: fieldingParts.join(""),
-        note: "",
-        pa,
-        slashLine,
-        hr,
-        rbi,
-        sb,
-        k: "",
-        bb: "",
-        extraStats: ""
-      };
-    }
-
-    function pitcher(name, age, handedness, velocity, control, stamina, primaryPitch, secondaryPitch, note, gp, ip, era, whip, fip, k, hr, hp, sv) {
-      return {
-        name,
-        age,
-        handedness,
-        velocity,
-        control,
-        stamina,
-        primaryPitch,
-        secondaryPitch,
-        note,
-        gp,
-        ip,
-        era,
-        whip,
-        fip,
-        k,
-        bb: "",
-        h: "",
-        hr,
-        hp,
-        w: "",
-        l: "",
-        hld: "",
-        sv,
-        extraStats: ""
-      };
-    }
-
-    function makeSheet(label, columns, samples) {
+    function makeSheet(label, columns) {
       return {
         label,
         addLabel: `新增${label}`,
         columns: [nameColumn, ...columns],
-        samples,
         empty: () => normalizeByColumns([nameColumn, ...columns], {})
       };
     }
@@ -599,7 +514,16 @@
     }
 
     function normalizePlayer(modeKey, sheetKey, player = {}) {
-      return normalizeByColumns(modes[modeKey].sheets[sheetKey].columns, player);
+      const nextPlayer = { ...player };
+      if (sheetKey === "pitchers" && "hp" in nextPlayer) {
+        if (modeKey === "pawapuro") {
+          nextPlayer.hld = nextPlayer.hld || nextPlayer.hp;
+          nextPlayer.hbp = nextPlayer.hbp || "";
+        } else {
+          nextPlayer.hbp = nextPlayer.hbp || nextPlayer.hp;
+        }
+      }
+      return normalizeByColumns(modes[modeKey].sheets[sheetKey].columns, nextPlayer);
     }
 
     function normalizeSheetData(modeKey, sheetKey, players) {
@@ -607,53 +531,118 @@
       return source.map((player) => normalizePlayer(modeKey, sheetKey, player));
     }
 
-    function normalizeState(input = {}) {
-      const nextState = {
+    function normalizeModeData(modeKey, input = {}) {
+      const modeData = {
         schemaVersion: SCHEMA_VERSION,
-        activeMode: modes[input.activeMode] ? input.activeMode : "pawapuro",
+        mode: modeKey,
         activeSheet: ["hitters", "pitchers"].includes(input.activeSheet) ? input.activeSheet : "hitters",
-        sheets: structuredClone(defaultState.sheets)
+        sheets: {}
       };
 
-      Object.keys(modes).forEach((modeKey) => {
-        Object.keys(modes[modeKey].sheets).forEach((sheetKey) => {
-          const imported = input.sheets?.[modeKey]?.[sheetKey];
-          if (Array.isArray(imported)) {
-            nextState.sheets[modeKey][sheetKey] = normalizeSheetData(modeKey, sheetKey, imported);
-          }
-        });
+      Object.keys(modes[modeKey].sheets).forEach((sheetKey) => {
+        modeData.sheets[sheetKey] = normalizeSheetData(modeKey, sheetKey, input.sheets?.[sheetKey]);
       });
 
-      return nextState;
+      return modeData;
     }
 
-    function loadState() {
+    async function loadModeSeed(modeKey) {
+      const response = await fetch(MODE_DATA_FILES[modeKey], { cache: "no-store" });
+      if (!response.ok) throw new Error(`Cannot load ${MODE_DATA_FILES[modeKey]}`);
+      return normalizeModeData(modeKey, await response.json());
+    }
+
+    function loadLegacyModeData(modeKey) {
       try {
-        const saved = localStorage.getItem(APP_STORAGE_KEY);
-        if (saved) return normalizeState(JSON.parse(saved));
+        const combined = localStorage.getItem(LEGACY_COMBINED_STORAGE_KEY);
+        if (combined) {
+          const parsed = JSON.parse(combined);
+          const modeSheets = parsed.sheets?.[modeKey];
+          if (modeSheets) {
+            return normalizeModeData(modeKey, {
+              activeSheet: parsed.activeMode === modeKey ? parsed.activeSheet : "hitters",
+              sheets: modeSheets
+            });
+          }
+        }
       } catch (error) {
         console.warn(error);
       }
-      return normalizeState(defaultState);
+
+      if (modeKey !== "prospi") return null;
+
+      try {
+        const legacySheets = {};
+        Object.entries(LEGACY_PROSPI_STORAGE_KEYS).forEach(([sheetKey, storageKey]) => {
+          const saved = localStorage.getItem(storageKey);
+          if (saved) legacySheets[sheetKey] = JSON.parse(saved);
+        });
+        if (legacySheets.hitters || legacySheets.pitchers) {
+          return normalizeModeData("prospi", {
+            activeSheet: legacySheets.hitters ? "hitters" : "pitchers",
+            sheets: legacySheets
+          });
+        }
+      } catch (error) {
+        console.warn(error);
+      }
+
+      return null;
+    }
+
+    async function loadModeData(modeKey, { forceSeed = false } = {}) {
+      if (!forceSeed && modeDataCache[modeKey]) return modeDataCache[modeKey];
+
+      if (!forceSeed) {
+        try {
+          const saved = localStorage.getItem(MODE_STORAGE_KEYS[modeKey]);
+          if (saved) {
+            modeDataCache[modeKey] = normalizeModeData(modeKey, JSON.parse(saved));
+            return modeDataCache[modeKey];
+          }
+        } catch (error) {
+          console.warn(error);
+        }
+
+        const legacyData = loadLegacyModeData(modeKey);
+        if (legacyData) {
+          modeDataCache[modeKey] = legacyData;
+          localStorage.setItem(MODE_STORAGE_KEYS[modeKey], JSON.stringify(legacyData));
+          return modeDataCache[modeKey];
+        }
+      }
+
+      modeDataCache[modeKey] = await loadModeSeed(modeKey);
+      return modeDataCache[modeKey];
+    }
+
+    function getActiveModeData() {
+      return modeDataCache[state.activeMode];
     }
 
     function saveState() {
-      localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(buildExport()));
+      const modeData = getActiveModeData();
+      if (!modeData) return;
+      modeData.activeSheet = state.activeSheet;
+      localStorage.setItem(ACTIVE_MODE_KEY, state.activeMode);
+      localStorage.setItem(ACTIVE_SHEET_KEY, state.activeSheet);
+      localStorage.setItem(MODE_STORAGE_KEYS[state.activeMode], JSON.stringify(buildExport()));
     }
 
     function buildExport() {
+      const modeData = getActiveModeData();
       return {
         schemaVersion: SCHEMA_VERSION,
-        activeMode: state.activeMode,
+        mode: state.activeMode,
         activeSheet: state.activeSheet,
-        sheets: state.sheets
+        sheets: modeData?.sheets ?? { hitters: [], pitchers: [] }
       };
     }
 
     function getActivePlayers() {
-      state.sheets[state.activeMode] ??= {};
-      state.sheets[state.activeMode][state.activeSheet] ??= [];
-      return state.sheets[state.activeMode][state.activeSheet];
+      const modeData = getActiveModeData();
+      modeData.sheets[state.activeSheet] ??= [];
+      return modeData.sheets[state.activeSheet];
     }
 
     function setStatus(message) {
@@ -774,10 +763,18 @@
       render();
     }
 
-    function switchMode(modeKey) {
+    async function switchMode(modeKey) {
       if (!modes[modeKey] || modeKey === state.activeMode) return;
-      state.activeMode = modeKey;
-      render();
+      try {
+        await loadModeData(modeKey);
+        state.activeMode = modeKey;
+        state.activeSheet = getActiveModeData().activeSheet;
+        render();
+      } catch (error) {
+        console.warn(error);
+        modeSelectEl.value = state.activeMode;
+        setStatus(`無法載入 ${modes[modeKey].label} 資料`);
+      }
     }
 
     async function copyOutput() {
@@ -796,10 +793,10 @@
       const blob = new Blob([JSON.stringify(buildExport(), null, 2)], { type: "application/json;charset=utf-8" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = "game-stat.json";
+      link.download = `game-stat-${state.activeMode}.json`;
       link.click();
       URL.revokeObjectURL(link.href);
-      setStatus("已下載 game-stat.json");
+      setStatus(`已下載 game-stat-${state.activeMode}.json`);
     }
 
     function importJsonFile(file) {
@@ -807,9 +804,13 @@
       const reader = new FileReader();
       reader.addEventListener("load", () => {
         try {
-          state = normalizeState(JSON.parse(String(reader.result)));
+          const parsed = JSON.parse(String(reader.result));
+          const modeKey = modes[parsed.mode] ? parsed.mode : state.activeMode;
+          modeDataCache[modeKey] = normalizeModeData(modeKey, parsed);
+          state.activeMode = modeKey;
+          state.activeSheet = modeDataCache[modeKey].activeSheet;
           render();
-          setStatus("已匯入 JSON");
+          setStatus(`已匯入 ${modes[modeKey].label} JSON`);
         } catch (error) {
           console.warn(error);
           setStatus("JSON 格式不正確");
@@ -841,14 +842,33 @@
     document.querySelector("#downloadJson").addEventListener("click", downloadOutput);
     document.querySelector("#importJson").addEventListener("click", () => jsonFileEl.click());
     jsonFileEl.addEventListener("change", () => importJsonFile(jsonFileEl.files?.[0]));
-    document.querySelector("#resetSample").addEventListener("click", () => {
-      const sheet = getSheetConfig();
-      state.sheets[state.activeMode][state.activeSheet] = sheet.samples.map((player) => normalizePlayer(state.activeMode, state.activeSheet, player));
-      render();
-      setStatus(`已重設 ${modes[state.activeMode].label} ${sheet.label} 範例資料`);
+    document.querySelector("#resetSample").addEventListener("click", async () => {
+      try {
+        await loadModeData(state.activeMode, { forceSeed: true });
+        render();
+        setStatus(`已重設 ${modes[state.activeMode].label} 資料`);
+      } catch (error) {
+        console.warn(error);
+        setStatus(`無法重設 ${modes[state.activeMode].label} 資料`);
+      }
     });
 
-    render();
+    async function init() {
+      try {
+        await loadModeData(state.activeMode);
+        state.activeSheet = getActiveModeData().activeSheet;
+        render();
+      } catch (error) {
+        console.warn(error);
+        rowsEl.innerHTML = "";
+        outputEl.value = "";
+        countEl.textContent = "";
+        sheetTitleEl.textContent = "資料載入失敗";
+        setStatus("無法載入資料檔，請用本機伺服器或 GitHub Pages 開啟");
+      }
+    }
+
+    init();
   </script>
 </body>
 </html>
