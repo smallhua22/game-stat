@@ -178,6 +178,7 @@
     }
 
     .sheet-tools {
+      position: relative;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -189,6 +190,55 @@
       color: var(--muted);
       font-size: 13px;
       white-space: nowrap;
+    }
+
+    .column-menu {
+      position: relative;
+    }
+
+    .column-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 20;
+      width: min(360px, calc(100vw - 36px));
+      max-height: min(520px, calc(100vh - 150px));
+      overflow: auto;
+      padding: 10px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .column-panel[hidden] {
+      display: none;
+    }
+
+    .column-checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 10px;
+    }
+
+    .column-checklist label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .column-checklist input {
+      width: 16px;
+      min-height: 16px;
+      flex: 0 0 auto;
+    }
+
+    .column-checklist label:has(input:disabled) {
+      color: var(--muted);
     }
 
     .table-wrap {
@@ -237,7 +287,6 @@
     .w-extra { width: 150px; }
     .w-actions { width: 116px; }
 
-    .metadata-folded table { min-width: 1120px; }
     .metadata-folded .metadata-col { display: none; }
 
     input,
@@ -348,6 +397,12 @@
         <div class="sheet-header">
           <strong id="sheetTitle">資料表</strong>
           <div class="sheet-tools">
+            <div class="column-menu">
+              <button type="button" id="toggleColumns" aria-expanded="false" aria-controls="columnPanel">欄位</button>
+              <div class="column-panel" id="columnPanel" hidden>
+                <div class="column-checklist" id="columnChecklist"></div>
+              </div>
+            </div>
             <button type="button" id="toggleMetadata" aria-pressed="false">收合資料</button>
             <span class="count" id="playerCount"></span>
           </div>
@@ -392,6 +447,7 @@
     const ACTIVE_MODE_KEY = "game-stat-active-mode-v2";
     const ACTIVE_SHEET_KEY = "game-stat-active-sheet-v2";
     const FOLD_STORAGE_KEY = "game-stat-metadata-folded-v2";
+    const COLUMN_VISIBILITY_KEY = "game-stat-column-visibility-v1";
     const SCHEMA_VERSION = 2;
 
     const rowsEl = document.querySelector("#rows");
@@ -401,6 +457,9 @@
     const statusEl = document.querySelector("#status");
     const tableWrapEl = document.querySelector(".table-wrap");
     const metadataButtonEl = document.querySelector("#toggleMetadata");
+    const columnButtonEl = document.querySelector("#toggleColumns");
+    const columnPanelEl = document.querySelector("#columnPanel");
+    const columnChecklistEl = document.querySelector("#columnChecklist");
     const addButtonEl = document.querySelector("#addPlayer");
     const modeSelectEl = document.querySelector("#modeSelect");
     const jsonFileEl = document.querySelector("#jsonFile");
@@ -420,6 +479,7 @@
 
     const pawapuroHitterMetadataColumns = [
       { field: "age", label: "年紀", placeholder: "19", className: "w-stat-small", metadata: true },
+      { field: "battingSide", label: "左右打", placeholder: "RHB", className: "w-grade", metadata: true },
       { field: "positions", label: "守備位置", placeholder: "CF=RF=LF", className: "w-pos", metadata: true },
       { field: "contact", label: "打擊", placeholder: "S", className: "w-grade", metadata: true },
       { field: "power", label: "力量", placeholder: "A", className: "w-grade", metadata: true },
@@ -494,6 +554,7 @@
       activeSheet: ["hitters", "pitchers"].includes(localStorage.getItem(ACTIVE_SHEET_KEY)) ? localStorage.getItem(ACTIVE_SHEET_KEY) : "hitters"
     };
     const modeDataCache = {};
+    const columnVisibility = loadColumnVisibility();
     let metadataFolded = localStorage.getItem(FOLD_STORAGE_KEY) === "true";
 
     function makeSheet(label, columns) {
@@ -626,10 +687,10 @@
       modeData.activeSheet = state.activeSheet;
       localStorage.setItem(ACTIVE_MODE_KEY, state.activeMode);
       localStorage.setItem(ACTIVE_SHEET_KEY, state.activeSheet);
-      localStorage.setItem(MODE_STORAGE_KEYS[state.activeMode], JSON.stringify(buildExport()));
+      localStorage.setItem(MODE_STORAGE_KEYS[state.activeMode], JSON.stringify(buildStorageExport()));
     }
 
-    function buildExport() {
+    function buildStorageExport() {
       const modeData = getActiveModeData();
       return {
         schemaVersion: SCHEMA_VERSION,
@@ -639,10 +700,110 @@
       };
     }
 
+    function pickPlayerFields(player, columns) {
+      return Object.fromEntries(columns.map((column) => [column.field, player[column.field] ?? ""]));
+    }
+
+    function buildExport() {
+      const modeData = getActiveModeData();
+      const sheets = {};
+      Object.entries(modes[state.activeMode].sheets).forEach(([sheetKey, sheet]) => {
+        const players = modeData?.sheets?.[sheetKey] ?? [];
+        const visibleColumns = getVisibleColumns(sheet, players, state.activeMode, sheetKey);
+        sheets[sheetKey] = players.map((player) => pickPlayerFields(player, visibleColumns));
+      });
+
+      return {
+        schemaVersion: SCHEMA_VERSION,
+        mode: state.activeMode,
+        activeSheet: state.activeSheet,
+        sheets
+      };
+    }
+
     function getActivePlayers() {
       const modeData = getActiveModeData();
       modeData.sheets[state.activeSheet] ??= [];
       return modeData.sheets[state.activeSheet];
+    }
+
+    function loadColumnVisibility() {
+      try {
+        return JSON.parse(localStorage.getItem(COLUMN_VISIBILITY_KEY)) || {};
+      } catch (error) {
+        console.warn(error);
+        return {};
+      }
+    }
+
+    function saveColumnVisibility() {
+      localStorage.setItem(COLUMN_VISIBILITY_KEY, JSON.stringify(columnVisibility));
+    }
+
+    function getColumnVisibilityScope(modeKey = state.activeMode, sheetKey = state.activeSheet) {
+      const scopeKey = `${modeKey}:${sheetKey}`;
+      columnVisibility[scopeKey] ??= {};
+      return columnVisibility[scopeKey];
+    }
+
+    function hasColumnData(players, column) {
+      return players.some((player) => String(player[column.field] ?? "").trim() !== "");
+    }
+
+    function isColumnVisible(players, column, modeKey = state.activeMode, sheetKey = state.activeSheet) {
+      if (column.field === nameColumn.field) return true;
+      const override = getColumnVisibilityScope(modeKey, sheetKey)[column.field];
+      if (typeof override === "boolean") return override;
+      return hasColumnData(players, column);
+    }
+
+    function getVisibleColumns(sheet, players, modeKey = state.activeMode, sheetKey = state.activeSheet) {
+      return sheet.columns.filter((column) => isColumnVisible(players, column, modeKey, sheetKey));
+    }
+
+    function getColumnWidth(column) {
+      const widthByClass = {
+        "w-name": 104,
+        "w-pos": 124,
+        "w-team": 94,
+        "w-series": 112,
+        "w-num": 84,
+        "w-grade": 82,
+        "w-note": 96,
+        "w-stat-small": 72,
+        "w-slash": 132,
+        "w-pitch": 130,
+        "w-extra": 150
+      };
+      return widthByClass[column.className] ?? 96;
+    }
+
+    function getTableMinWidth(columns) {
+      const columnWidth = columns.reduce((sum, column) => sum + getColumnWidth(column), 0);
+      return Math.max(520, columnWidth + 116);
+    }
+
+    function renderColumnChecklist(sheet, players) {
+      const scope = getColumnVisibilityScope();
+      columnChecklistEl.innerHTML = "";
+      sheet.columns.forEach((column) => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = isColumnVisible(players, column);
+        checkbox.disabled = column.field === nameColumn.field;
+        checkbox.dataset.field = column.field;
+        label.append(checkbox, document.createTextNode(column.label));
+        columnChecklistEl.append(label);
+      });
+
+      columnChecklistEl.querySelectorAll("input:not(:disabled)").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          scope[checkbox.dataset.field] = checkbox.checked;
+          saveColumnVisibility();
+          render();
+        });
+      });
     }
 
     function setStatus(message) {
@@ -660,9 +821,9 @@
       metadataButtonEl.title = metadataFolded ? "顯示 metadata 欄位" : "隱藏 metadata 欄位";
     }
 
-    function renderHeader() {
+    function renderHeader(columns) {
       headerRowEl.innerHTML = "";
-      getSheetConfig().columns.forEach((column) => {
+      columns.forEach((column) => {
         const th = document.createElement("th");
         th.className = `${column.className}${column.metadata ? " metadata-col" : ""}`;
         th.textContent = column.label;
@@ -677,12 +838,14 @@
     function render() {
       const sheet = getSheetConfig();
       const players = getActivePlayers();
-      renderHeader();
+      const visibleColumns = getVisibleColumns(sheet, players);
+      renderHeader(visibleColumns);
+      renderColumnChecklist(sheet, players);
       rowsEl.innerHTML = "";
 
       players.forEach((player, index) => {
         const tr = document.createElement("tr");
-        sheet.columns.forEach((column) => {
+        visibleColumns.forEach((column) => {
           const td = document.createElement("td");
           if (column.metadata) td.className = "metadata-col";
           const input = document.createElement("input");
@@ -714,7 +877,8 @@
       sheetTitleEl.textContent = `${modes[state.activeMode].label} ${sheet.label}`;
       outputEl.value = JSON.stringify(buildExport(), null, 2);
       countEl.textContent = `${players.length} 位${sheet.label}`;
-      tableWrapEl.style.setProperty("--table-min-width", state.activeSheet === "pitchers" ? "1840px" : "1510px");
+      const widthColumns = metadataFolded ? visibleColumns.filter((column) => !column.metadata) : visibleColumns;
+      tableWrapEl.style.setProperty("--table-min-width", `${getTableMinWidth(widthColumns)}px`);
       applyMetadataFold();
       saveState();
     }
@@ -831,10 +995,20 @@
 
     tabButtons.forEach((button) => button.addEventListener("click", () => switchSheet(button.dataset.sheet)));
     modeSelectEl.addEventListener("change", () => switchMode(modeSelectEl.value));
+    columnButtonEl.addEventListener("click", () => {
+      const expanded = columnPanelEl.hidden;
+      columnPanelEl.hidden = !expanded;
+      columnButtonEl.setAttribute("aria-expanded", String(expanded));
+    });
+    document.addEventListener("click", (event) => {
+      if (columnPanelEl.hidden || event.target.closest(".column-menu")) return;
+      columnPanelEl.hidden = true;
+      columnButtonEl.setAttribute("aria-expanded", "false");
+    });
     metadataButtonEl.addEventListener("click", () => {
       metadataFolded = !metadataFolded;
       localStorage.setItem(FOLD_STORAGE_KEY, String(metadataFolded));
-      applyMetadataFold();
+      render();
     });
     addButtonEl.addEventListener("click", addPlayer);
     document.querySelector("#copyJson").addEventListener("click", copyOutput);
