@@ -538,6 +538,7 @@
 
     const fangraphsPointsColumns = [
       { field: "totalFp", label: "Total FP", className: "w-fp", compute: computeTotalFp },
+      { field: "pureFp", label: "Pure FP", className: "w-fp", compute: computePureFp },
       { field: "fp9", label: "FP9", className: "w-fp", compute: computeFp9 },
       { field: "avgFp", label: "Avg FP", className: "w-fp", compute: computeAvgFp },
       { field: "fpMa5", label: "FP-MA5", className: "w-fp", compute: () => "" }
@@ -610,21 +611,30 @@
       return Number.isFinite(value) ? String(Number(value.toFixed(digits))) : "";
     }
 
-    const fangraphsInputFields = ["ip", "k", "h", "sv", "hld", "hr", "bb"];
+    const fangraphsPureInputFields = ["ip", "k", "h", "hr", "bb"];
+    const fangraphsInputFields = [...fangraphsPureInputFields, "sv", "hld"];
 
     function allFilled(player, fields) {
       return fields.every((field) => String(player[field] ?? "").trim() !== "");
     }
 
-    function fangraphsPointsValue(player) {
+    // Pure FP: the FP formula without the +5·SV and +4·HLD relief credit.
+    function fangraphsPureValue(player) {
       const ip = parseInnings(player.ip);
       return 7.4 * ip
         + 2.0 * toNumber(player.k)
         - 2.6 * toNumber(player.h)
-        + 5 * toNumber(player.sv)
-        + 4 * toNumber(player.hld)
         - 12.3 * toNumber(player.hr)
         - 3 * toNumber(player.bb);
+    }
+
+    function fangraphsPointsValue(player) {
+      return fangraphsPureValue(player) + 5 * toNumber(player.sv) + 4 * toNumber(player.hld);
+    }
+
+    function computePureFp(player) {
+      if (!allFilled(player, fangraphsPureInputFields)) return "";
+      return roundStat(fangraphsPureValue(player));
     }
 
     function computeTotalFp(player) {
