@@ -199,6 +199,7 @@
       {
         "name": "Dummy Pitcher 01",
         "age": "31",
+        "role": "CP",
         "handedness": "RHP",
         "velocity": "150",
         "control": "C",
@@ -225,6 +226,7 @@
       {
         "name": "Dummy Pitcher 02",
         "age": "20",
+        "role": "CP",
         "handedness": "RHP",
         "velocity": "146",
         "control": "D",
@@ -251,6 +253,7 @@
       {
         "name": "Dummy Pitcher 03",
         "age": "22",
+        "role": "SP",
         "handedness": "RHP",
         "velocity": "156",
         "control": "E",
@@ -277,6 +280,7 @@
       {
         "name": "Dummy Pitcher 04",
         "age": "24",
+        "role": "CP",
         "handedness": "RHP",
         "velocity": "156",
         "control": "C",
@@ -303,6 +307,7 @@
       {
         "name": "Dummy Pitcher 05",
         "age": "24",
+        "role": "SP",
         "handedness": "LHP",
         "velocity": "155",
         "control": "E",
@@ -329,6 +334,7 @@
       {
         "name": "Dummy Pitcher 06",
         "age": "27",
+        "role": "RP",
         "handedness": "LHP",
         "velocity": "152",
         "control": "C",
@@ -355,6 +361,7 @@
       {
         "name": "Dummy Pitcher 07",
         "age": "28",
+        "role": "RP",
         "handedness": "LHP",
         "velocity": "150",
         "control": "E",
@@ -381,6 +388,7 @@
       {
         "name": "Dummy Pitcher 08",
         "age": "21",
+        "role": "RP",
         "handedness": "LHP",
         "velocity": "147",
         "control": "C",
@@ -407,6 +415,7 @@
       {
         "name": "Dummy Pitcher 09",
         "age": "29",
+        "role": "RP",
         "handedness": "LHP",
         "velocity": "149",
         "control": "C",
@@ -433,6 +442,7 @@
       {
         "name": "Dummy Pitcher 10",
         "age": "25",
+        "role": "RP",
         "handedness": "LHP",
         "velocity": "155",
         "control": "D",

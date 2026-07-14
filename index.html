@@ -282,6 +282,7 @@
     .w-grade { width: 82px; }
     .w-note { width: 96px; }
     .w-stat-small { width: 72px; }
+    .w-fp { width: 90px; }
     .w-slash { width: 132px; }
     .w-pitch { width: 130px; }
     .w-extra { width: 150px; }
@@ -309,6 +310,13 @@
     input::placeholder,
     textarea::placeholder {
       color: #98a5b1;
+    }
+
+    input.computed {
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: default;
+      text-align: right;
     }
 
     .compact-actions {
@@ -491,6 +499,7 @@
 
     const pawapuroPitcherMetadataColumns = [
       { field: "age", label: "年紀", placeholder: "27", className: "w-stat-small", metadata: true },
+      { field: "role", label: "位置", placeholder: "SP/RP/CP", className: "w-grade", metadata: true },
       { field: "handedness", label: "左右投", placeholder: "RHP", className: "w-grade", metadata: true },
       { field: "velocity", label: "球速", placeholder: "157", className: "w-stat-small", metadata: true },
       { field: "control", label: "控球", placeholder: "C", className: "w-grade", metadata: true },
@@ -511,6 +520,13 @@
       { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
     ];
 
+    const fangraphsPointsColumns = [
+      { field: "totalFp", label: "Total FP", className: "w-fp", compute: computeTotalFp },
+      { field: "fp9", label: "FP9", className: "w-fp", compute: computeFp9 },
+      { field: "avgFp", label: "Avg FP", className: "w-fp", compute: computeAvgFp },
+      { field: "fpMa5", label: "FP-MA5", className: "w-fp", compute: () => "" }
+    ];
+
     const pitcherStatColumns = [
       { field: "gp", label: "GP", placeholder: "10", className: "w-stat-small" },
       { field: "ip", label: "IP", placeholder: "11.1", className: "w-stat-small" },
@@ -526,6 +542,7 @@
       { field: "l", label: "L", placeholder: "", className: "w-stat-small" },
       { field: "hld", label: "HLD", placeholder: "", className: "w-stat-small" },
       { field: "sv", label: "SV", placeholder: "2", className: "w-stat-small" },
+      ...fangraphsPointsColumns,
       { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
     ];
 
@@ -557,6 +574,66 @@
     const columnVisibility = loadColumnVisibility();
     let metadataFolded = localStorage.getItem(FOLD_STORAGE_KEY) === "true";
 
+    function toNumber(raw) {
+      const value = parseFloat(raw);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    // IP is stored in baseball outs notation (e.g. "11.1" = 11⅓, "4.2" = 4⅔).
+    function parseInnings(raw) {
+      const value = parseFloat(raw);
+      if (!Number.isFinite(value)) return 0;
+      const whole = Math.trunc(value);
+      const tenths = Math.round((value - whole) * 10);
+      if (tenths === 1) return whole + 1 / 3;
+      if (tenths === 2) return whole + 2 / 3;
+      return value;
+    }
+
+    function roundStat(value, digits = 1) {
+      return Number.isFinite(value) ? String(Number(value.toFixed(digits))) : "";
+    }
+
+    const fangraphsInputFields = ["ip", "k", "h", "sv", "hld", "hr", "bb"];
+
+    function allFilled(player, fields) {
+      return fields.every((field) => String(player[field] ?? "").trim() !== "");
+    }
+
+    function fangraphsPointsValue(player) {
+      const ip = parseInnings(player.ip);
+      return 7.4 * ip
+        + 2.0 * toNumber(player.k)
+        - 2.6 * toNumber(player.h)
+        + 5 * toNumber(player.sv)
+        + 4 * toNumber(player.hld)
+        - 12.3 * toNumber(player.hr)
+        - 3 * toNumber(player.bb);
+    }
+
+    function computeTotalFp(player) {
+      if (!allFilled(player, fangraphsInputFields)) return "";
+      return roundStat(fangraphsPointsValue(player));
+    }
+
+    function computeFp9(player) {
+      if (!allFilled(player, fangraphsInputFields)) return "";
+      const ip = parseInnings(player.ip);
+      if (ip <= 0) return "";
+      return roundStat((fangraphsPointsValue(player) / ip) * 9);
+    }
+
+    function computeAvgFp(player) {
+      if (!allFilled(player, [...fangraphsInputFields, "gp"])) return "";
+      const gp = toNumber(player.gp);
+      if (gp <= 0) return "";
+      return roundStat(fangraphsPointsValue(player) / gp);
+    }
+
+    function getColumnValue(player, column) {
+      return column.compute ? column.compute(player) : (player[column.field] ?? "");
+    }
+
     function makeSheet(label, columns) {
       return {
         label,
@@ -571,7 +648,9 @@
     }
 
     function normalizeByColumns(columns, player = {}) {
-      return Object.fromEntries(columns.map((column) => [column.field, String(player[column.field] ?? "")]));
+      return Object.fromEntries(
+        columns.filter((column) => !column.compute).map((column) => [column.field, String(player[column.field] ?? "")])
+      );
     }
 
     function normalizePlayer(modeKey, sheetKey, player = {}) {
@@ -701,7 +780,9 @@
     }
 
     function pickPlayerFields(player, columns) {
-      return Object.fromEntries(columns.map((column) => [column.field, player[column.field] ?? ""]));
+      return Object.fromEntries(
+        columns.filter((column) => !column.compute).map((column) => [column.field, player[column.field] ?? ""])
+      );
     }
 
     function buildExport() {
@@ -747,13 +828,14 @@
     }
 
     function hasColumnData(players, column) {
-      return players.some((player) => String(player[column.field] ?? "").trim() !== "");
+      return players.some((player) => String(getColumnValue(player, column)).trim() !== "");
     }
 
     function isColumnVisible(players, column, modeKey = state.activeMode, sheetKey = state.activeSheet) {
       if (column.field === nameColumn.field) return true;
       const override = getColumnVisibilityScope(modeKey, sheetKey)[column.field];
       if (typeof override === "boolean") return override;
+      if (column.compute) return true;
       return hasColumnData(players, column);
     }
 
@@ -771,6 +853,7 @@
         "w-grade": 82,
         "w-note": 96,
         "w-stat-small": 72,
+        "w-fp": 90,
         "w-slash": 132,
         "w-pitch": 130,
         "w-extra": 150
@@ -849,10 +932,18 @@
           const td = document.createElement("td");
           if (column.metadata) td.className = "metadata-col";
           const input = document.createElement("input");
-          input.value = player[column.field];
-          input.placeholder = column.placeholder;
-          input.dataset.index = index;
-          input.dataset.field = column.field;
+          if (column.compute) {
+            input.value = getColumnValue(player, column);
+            input.readOnly = true;
+            input.tabIndex = -1;
+            input.classList.add("computed");
+            input.dataset.computed = column.field;
+          } else {
+            input.value = player[column.field];
+            input.placeholder = column.placeholder;
+            input.dataset.index = index;
+            input.dataset.field = column.field;
+          }
           td.append(input);
           tr.append(td);
         });
@@ -985,10 +1076,20 @@
       reader.readAsText(file);
     }
 
+    function updateComputedCells(tr, player) {
+      if (!tr) return;
+      tr.querySelectorAll("input[data-computed]").forEach((input) => {
+        const column = fangraphsPointsColumns.find((candidate) => candidate.field === input.dataset.computed);
+        if (column) input.value = getColumnValue(player, column);
+      });
+    }
+
     rowsEl.addEventListener("input", (event) => {
       const { index, field } = event.target.dataset;
       if (index === undefined || !field) return;
-      getActivePlayers()[Number(index)][field] = event.target.value;
+      const player = getActivePlayers()[Number(index)];
+      player[field] = event.target.value;
+      updateComputedCells(event.target.closest("tr"), player);
       outputEl.value = JSON.stringify(buildExport(), null, 2);
       saveState();
     });
