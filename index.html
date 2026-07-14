@@ -796,9 +796,8 @@
     }
 
     function pickPlayerFields(player, columns) {
-      return Object.fromEntries(
-        columns.filter((column) => !column.compute).map((column) => [column.field, player[column.field] ?? ""])
-      );
+      // Computed columns (e.g. FP series) are emitted in the export, but ignored on import.
+      return Object.fromEntries(columns.map((column) => [column.field, getColumnValue(player, column)]));
     }
 
     function buildExport() {
