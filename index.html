@@ -274,6 +274,22 @@
 
     tr:last-child td { border-bottom: 0; }
 
+    th:first-child,
+    td:first-child {
+      position: sticky;
+      left: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    td:first-child {
+      z-index: 2;
+      background: var(--panel);
+    }
+
+    th:first-child {
+      z-index: 3;
+    }
+
     .w-name { width: 104px; }
     .w-pos { width: 124px; }
     .w-team { width: 94px; }
