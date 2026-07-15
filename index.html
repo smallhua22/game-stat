@@ -527,12 +527,14 @@
 
     const hitterStatColumns = [
       { field: "pa", label: "PA", placeholder: "93", className: "w-stat-small" },
+      { field: "ab", label: "AB", placeholder: "85", className: "w-stat-small" },
       { field: "slashLine", label: "AVG/OBP/SLG", placeholder: ".407/.409/.615", className: "w-slash" },
       { field: "hr", label: "HR", placeholder: "3", className: "w-stat-small" },
       { field: "rbi", label: "RBI", placeholder: "12", className: "w-stat-small" },
       { field: "sb", label: "SB", placeholder: "3", className: "w-stat-small" },
       { field: "k", label: "K", placeholder: "", className: "w-stat-small" },
       { field: "bb", label: "BB", placeholder: "", className: "w-stat-small" },
+      { field: "babip", label: "BABIP", className: "w-stat-small", compute: computeHitterBabip },
       { field: "extraStats", label: "其他成績", placeholder: "", className: "w-extra" }
     ];
 
@@ -554,6 +556,8 @@
       { field: "bb", label: "BB", placeholder: "", className: "w-stat-small" },
       { field: "h", label: "H", placeholder: "", className: "w-stat-small" },
       { field: "hr", label: "HR", placeholder: "0", className: "w-stat-small" },
+      { field: "ab", label: "AB", placeholder: "", className: "w-stat-small" },
+      { field: "babip", label: "BABIP", className: "w-stat-small", compute: computePitcherBabip },
       { field: "hbp", label: "HBP", placeholder: "0", className: "w-stat-small" },
       { field: "w", label: "W", placeholder: "", className: "w-stat-small" },
       { field: "l", label: "L", placeholder: "", className: "w-stat-small" },
@@ -654,6 +658,39 @@
       const gp = toNumber(player.gp);
       if (gp <= 0) return "";
       return roundStat(fangraphsPointsValue(player) / gp);
+    }
+
+    // AVG is the first component of the "AVG/OBP/SLG" slash line (e.g. ".407").
+    function parseAvg(slashLine) {
+      const value = parseFloat(String(slashLine ?? "").split("/")[0]);
+      return Number.isFinite(value) ? value : NaN;
+    }
+
+    // Rate stats are shown baseball-style, dropping the leading zero (e.g. ".333").
+    function formatRate(value) {
+      if (!Number.isFinite(value)) return "";
+      return value.toFixed(3).replace(/^(-?)0\./, "$1.");
+    }
+
+    // Approx BABIP = (H - HR) / (AB - K - HR).
+    function computeBabip(h, ab, k, hr) {
+      const denom = ab - k - hr;
+      if (denom <= 0) return "";
+      return formatRate((h - hr) / denom);
+    }
+
+    // Batters have no H column; H is approximated as AB × AVG.
+    function computeHitterBabip(player) {
+      if (!allFilled(player, ["ab", "slashLine", "k", "hr"])) return "";
+      const avg = parseAvg(player.slashLine);
+      if (!Number.isFinite(avg)) return "";
+      const ab = toNumber(player.ab);
+      return computeBabip(ab * avg, ab, toNumber(player.k), toNumber(player.hr));
+    }
+
+    function computePitcherBabip(player) {
+      if (!allFilled(player, ["ab", "h", "k", "hr"])) return "";
+      return computeBabip(toNumber(player.h), toNumber(player.ab), toNumber(player.k), toNumber(player.hr));
     }
 
     function getColumnValue(player, column) {
@@ -1103,9 +1140,10 @@
 
     function updateComputedCells(tr, player) {
       if (!tr) return;
+      const columns = getSheetConfig().columns;
       tr.querySelectorAll("input[data-computed]").forEach((input) => {
-        const column = fangraphsPointsColumns.find((candidate) => candidate.field === input.dataset.computed);
-        if (column) input.value = getColumnValue(player, column);
+        const column = columns.find((candidate) => candidate.field === input.dataset.computed);
+        if (column?.compute) input.value = getColumnValue(player, column);
       });
     }
 
