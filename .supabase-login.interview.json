@@ -1,0 +1,62 @@
+{
+  "specName": "supabase-login",
+  "timestamp": "2026-09-08",
+  "status": "approved",
+  "capturedAtCommit": "5957e39",
+  "previewUrl": null,
+  "sourceIssue": null,
+  "redTeamStatus": "completed",
+  "coverageMap": {
+    "problem": "done",
+    "identity": "done",
+    "backend": "done",
+    "scope": "done",
+    "authMethod": "done",
+    "loginDepth": "done",
+    "dataModel": "done",
+    "migration": "done",
+    "visibilityRls": "done",
+    "deletion": "done",
+    "configDeploy": "done",
+    "concurrency": "done",
+    "dataSafety": "done",
+    "session": "done"
+  },
+  "qaLog": [
+    {"area": "identity", "q": "What is user_id meant to be?", "a": "Real multi-user with login system"},
+    {"area": "backend", "q": "Which backend stack?", "a": "Supabase"},
+    {"area": "scope", "q": "How deep is the first feature?", "a": "Keep it simple: a login system (scoped to login + per-user cloud data; date tracking later)"},
+    {"area": "authMethod", "q": "Which sign-in method(s)?", "a": "Google OAuth"},
+    {"area": "loginDepth", "q": "What changes on login?", "a": "Login gates app + moves data to Supabase (source of truth)"},
+    {"area": "dataModel", "q": "How is table data stored in Postgres?", "a": "Hybrid: JSON blob per (user_id, table_id) now, normalize later"},
+    {"area": "migration", "q": "How does existing local data become cloud data?", "a": "Cloud starts empty, manual import only"},
+    {"area": "visibilityRls", "q": "Visibility model / RLS?", "a": "Strictly private per user (RLS user_id = auth.uid())"},
+    {"area": "deletion", "q": "Can a user delete account/data?", "a": "Self-serve delete in-app"},
+    {"area": "configDeploy", "q": "Deploy domain?", "a": "GitHub Pages default domain; anon key committed"},
+    {"area": "deletion", "q": "Deletion mechanism (client can't delete auth.users)?", "a": "RPC deletes data rows, auth kept", "source": "Red Team"},
+    {"area": "concurrency", "q": "Cross-device concurrent edits?", "a": "updated_at guard, reject stale writes", "source": "Red Team"},
+    {"area": "dataSafety", "q": "Protect existing localStorage on login switch-on?", "a": "Pre-login export prompt + import after", "source": "Red Team"},
+    {"area": "session", "q": "Session & logout behavior?", "a": "Logout button + Supabase defaults", "source": "Red Team"}
+  ],
+  "baseline": {
+    "derivedFrom": "index.html single-file localStorage app",
+    "capturedAtCommit": "5957e39",
+    "claims": [
+      {"area": "backend", "claim": "App is a single static index.html deployed to GitHub Pages with no backend/build step"},
+      {"area": "dataModel", "claim": "Data stored in localStorage per mode (game-stat-pawapuro-json-v1, game-stat-prospi-json-v1), seeded from data/*.json"},
+      {"area": "dataModel", "claim": "Export/import of JSON supported; two modes pawapuro/prospi each with hitters/pitchers sheets"}
+    ]
+  },
+  "driftLedger": [],
+  "feedbackRounds": [],
+  "redTeamFindings": [
+    {"id": "rt-deletion", "severity": "critical", "title": "Client can't delete own auth.users", "resolution": "D11 RPC deletes data rows only"},
+    {"id": "rt-concurrency", "severity": "major", "title": "Blob last-write-wins clobber", "resolution": "D12 updated_at optimistic lock"},
+    {"id": "rt-dataloss", "severity": "critical", "title": "Existing localStorage lost on first login", "resolution": "D13 pre-login export prompt"},
+    {"id": "rt-session", "severity": "major", "title": "No logout / shared-computer risk", "resolution": "D14 logout button + defaults"},
+    {"id": "rt-rls-verify", "severity": "critical", "title": "RLS misconfig exposes all data", "resolution": "Spec hard release gate: unauthenticated read/write must be denied"},
+    {"id": "rt-freetier", "severity": "major", "title": "Supabase free-tier auto-pause", "resolution": "D15 accept + document"},
+    {"id": "rt-offline", "severity": "major", "title": "No offline support", "resolution": "D16 online-only"},
+    {"id": "rt-scopes", "severity": "minor", "title": "OAuth scope creep", "resolution": "D17 openid + email only"}
+  ]
+}
