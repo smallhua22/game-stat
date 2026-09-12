@@ -7,9 +7,19 @@
 -- ---------------------------------------------------------------------------
 -- 1. Schema: one JSON-blob row per (user_id, table_id). table_id = game mode.
 -- ---------------------------------------------------------------------------
+
+-- Lookup table of valid game modes, referenced by table_id below instead of
+-- an inline CHECK — adding a new mode is then an insert here, not a migration.
+create table if not exists public.game_modes (
+  id text primary key
+);
+
+insert into public.game_modes (id) values ('pawapuro'), ('prospi')
+on conflict (id) do nothing;
+
 create table if not exists public.user_tables (
   user_id    uuid        not null references auth.users (id) on delete cascade,
-  table_id   text        not null check (table_id in ('pawapuro', 'prospi')),
+  table_id   text        not null references public.game_modes (id),
   data       jsonb       not null,
   updated_at timestamptz not null default now(),
   primary key (user_id, table_id)
@@ -58,6 +68,9 @@ create policy "own rows - delete" on public.user_tables
 grant select, insert, update, delete on public.user_tables to authenticated;
 revoke all on public.user_tables from anon;
 
+grant select on public.game_modes to authenticated;
+revoke all on public.game_modes from anon;
+
 -- ---------------------------------------------------------------------------
 -- 3. Self-serve data deletion (D9/D11): deletes the caller's rows only.
 --    The auth.users record is intentionally kept.
@@ -74,22 +87,8 @@ revoke all on function public.delete_account() from public, anon;
 grant execute on function public.delete_account() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4. RELEASE GATE — verify RLS blocks unauthenticated access before deploy.
---    RLS is the ONLY thing protecting user data, so this test must pass.
---
---    Run these from the browser console on the DEPLOYED, SIGNED-OUT site
---    (uses the public anon key, no session):
---
---      const t = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
---      console.log(await t.from('user_tables').select('*'));
---        // EXPECT: error "permission denied for table user_tables"
---        //   (anon has no table privileges — blocked before RLS even applies)
---      console.log(await t.from('user_tables')
---        .insert({ user_id: '00000000-0000-0000-0000-000000000000',
---                  table_id: 'pawapuro', data: {} }));
---        // EXPECT: error — write denied
---      console.log(await t.rpc('delete_account'));
---        // EXPECT: error — anon cannot execute
---
---    If ANY of these return data or succeed without error, DO NOT deploy.
+-- 4. RELEASE GATE — before deploying, verify RLS blocks unauthenticated
+--    read/write access. Automated in supabase/release-gate-test.mjs (runs in
+--    CI before every deploy); see docs/spec-supabase-login.md#release-gate-test
+--    for that plus the manual browser-console equivalent.
 -- ---------------------------------------------------------------------------

@@ -59,9 +59,13 @@ Visitor → Login gate → Google OAuth → Supabase session → app loads user'
 One row per `(user_id, table_id)`; `table_id` is the game mode.
 
 ```sql
+create table public.game_modes (
+  id text primary key         -- 'pawapuro' | 'prospi'
+);
+
 create table public.user_tables (
   user_id    uuid        not null references auth.users (id),
-  table_id   text        not null check (table_id in ('pawapuro','prospi')),
+  table_id   text        not null references public.game_modes (id),
   data       jsonb       not null,          -- full export shape: { schemaVersion, mode, activeSheet, sheets:{hitters,pitchers} }
   updated_at timestamptz not null default now(),
   primary key (user_id, table_id)
@@ -94,6 +98,33 @@ what RLS permits.
 - **Anon key** is committed in the public repo — safe by design. Rotation, if ever
   needed, is done by provisioning a new Supabase project.
 - **Scopes** minimized to `openid` + `email`.
+
+### Release Gate Test
+
+RLS is the only thing protecting user data, so this test must pass before every deploy.
+It's automated: `supabase/release-gate-test.mjs` reads the public `SUPABASE_URL`/
+`SUPABASE_ANON_KEY` straight out of `index.html` (no credentials needed — the anon key is
+public by design) and runs as a required job in `.github/workflows/pages.yml` before every
+deploy to `main`, blocking the deploy if any check unexpectedly succeeds. Run it locally
+with `node supabase/release-gate-test.mjs`.
+
+The manual, browser-console equivalent (useful for ad hoc checks against a specific
+deployed site while signed out):
+
+```js
+const t = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+console.log(await t.from('user_tables').select('*'));
+  // EXPECT: error "permission denied for table user_tables"
+  //   (anon has no table privileges — blocked before RLS even applies)
+console.log(await t.from('user_tables')
+  .insert({ user_id: '00000000-0000-0000-0000-000000000000',
+            table_id: 'pawapuro', data: {} }));
+  // EXPECT: error — write denied
+console.log(await t.rpc('delete_account'));
+  // EXPECT: error — anon cannot execute
+```
+
+If ANY of these return data or succeed without error, DO NOT deploy.
 
 ## Migration & Data Safety
 
