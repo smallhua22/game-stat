@@ -5,11 +5,15 @@
 -- as a redirect URL in Authentication → URL Configuration.
 
 -- ---------------------------------------------------------------------------
--- 1. Schema: one JSON-blob row per (user_id, table_id). table_id = game mode.
+-- 1. Schema: one JSON-blob row per (user_id, table_id). table_id is a free-form
+--    identifier for the table instance; type is the game mode it follows.
+--    Today the app always sets both to the same value ('pawapuro'/'prospi'),
+--    but they're separate columns so table_id can become a user-chosen name
+--    later without touching the type/RLS/game-mode model.
 -- ---------------------------------------------------------------------------
 
--- Lookup table of valid game modes, referenced by table_id below instead of
--- an inline CHECK — adding a new mode is then an insert here, not a migration.
+-- Lookup table of valid game modes, referenced by `type` below instead of
+-- an inline CHECK — adding a new mode is then an insert here.
 create table if not exists public.game_modes (
   id text primary key
 );
@@ -19,11 +23,30 @@ on conflict (id) do nothing;
 
 create table if not exists public.user_tables (
   user_id    uuid        not null references auth.users (id) on delete cascade,
-  table_id   text        not null references public.game_modes (id),
+  table_id   text        not null,
+  type       text        not null references public.game_modes (id),
   data       jsonb       not null,
   updated_at timestamptz not null default now(),
   primary key (user_id, table_id)
 );
+
+-- The app doesn't send `type` on insert yet (it only knows table_id, which
+-- happens to already be the mode name) — default type from table_id so
+-- today's writes keep working unchanged.
+create or replace function public.default_type_from_table_id()
+returns trigger language plpgsql as $$
+begin
+  if new.type is null then
+    new.type := new.table_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_user_tables_default_type on public.user_tables;
+create trigger trg_user_tables_default_type
+  before insert on public.user_tables
+  for each row execute function public.default_type_from_table_id();
 
 -- Keep updated_at fresh on every UPDATE so it can act as an optimistic lock (D12).
 -- The WHERE clause of an UPDATE sees the OLD updated_at (evaluated before this

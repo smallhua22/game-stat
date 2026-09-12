@@ -56,7 +56,11 @@ Visitor → Login gate → Google OAuth → Supabase session → app loads user'
 
 ## Data Model
 
-One row per `(user_id, table_id)`; `table_id` is the game mode.
+One row per `(user_id, table_id)`. `table_id` is a free-form identifier for the table
+instance; `type` is the game mode it follows (`pawapuro`/`prospi`). Today the app always
+sets both to the same value — it has no concept of a user-named table yet — but keeping
+them as separate columns means `table_id` can become a real user-chosen name later without
+touching the type/RLS/game-mode model.
 
 ```sql
 create table public.game_modes (
@@ -65,12 +69,16 @@ create table public.game_modes (
 
 create table public.user_tables (
   user_id    uuid        not null references auth.users (id),
-  table_id   text        not null references public.game_modes (id),
+  table_id   text        not null,
+  type       text        not null references public.game_modes (id),
   data       jsonb       not null,          -- full export shape: { schemaVersion, mode, activeSheet, sheets:{hitters,pitchers} }
   updated_at timestamptz not null default now(),
   primary key (user_id, table_id)
 );
 ```
+
+A `before insert` trigger defaults `type` from `table_id` when the caller doesn't supply
+it, since the app only sends `table_id` today — see `supabase/setup.sql`.
 
 - `data` is the app's existing **export blob** (both `hitters` and `pitchers` sheets in
   one JSON). This absorbs the divergent pawapuro/prospi field sets with zero schema work.
