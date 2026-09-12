@@ -23,6 +23,8 @@
 
     * { box-sizing: border-box; }
 
+    [hidden] { display: none !important; }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -373,6 +375,60 @@
       font-size: 13px;
     }
 
+    .auth-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: var(--bg);
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      padding: 28px 32px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .auth-card h1 { margin: 0 0 8px; font-size: 22px; }
+    .auth-card p { margin: 8px 0 16px; color: var(--muted); }
+    .auth-card .primary { min-width: 200px; }
+    .auth-hint { font-size: 13px; color: var(--danger); }
+
+    .local-warn {
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      font-size: 13px;
+      text-align: left;
+      color: var(--text);
+    }
+
+    .local-warn button { margin-top: 8px; }
+
+    .user-control { display: flex; align-items: center; gap: 8px; }
+
+    .user-email {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    button.danger-btn { color: var(--danger); }
+    button.danger-btn:hover { border-color: var(--danger); }
+
     @media (max-width: 980px) {
       .topbar {
         position: static;
@@ -392,7 +448,20 @@
   </style>
 </head>
 <body>
-  <main class="app">
+  <div class="auth-gate" id="authGate" hidden>
+    <div class="auth-card">
+      <h1>選手資料輸入</h1>
+      <p>請先使用 Google 登入以存取你的雲端資料。</p>
+      <button type="button" id="googleSignIn" class="primary">使用 Google 登入</button>
+      <p class="auth-hint" id="authHint"></p>
+      <div class="local-warn" id="localDataWarn" hidden>
+        偵測到此瀏覽器有本機資料。登入後雲端會從空白開始，請先匯出備份以免遺失。
+        <div><button type="button" id="exportLocal">匯出本機資料</button></div>
+      </div>
+    </div>
+  </div>
+
+  <main class="app" hidden>
     <header class="topbar">
       <h1>選手資料輸入</h1>
       <div class="tabs" role="tablist" aria-label="選手類型">
@@ -413,6 +482,11 @@
         <button type="button" id="importJson">匯入 JSON</button>
         <input type="file" id="jsonFile" accept="application/json,.json" hidden>
         <button type="button" id="resetSample">重設範例</button>
+        <div class="user-control">
+          <span class="user-email" id="userEmail"></span>
+          <button type="button" id="signOut">登出</button>
+          <button type="button" id="deleteData" class="danger-btn">刪除我的資料</button>
+        </div>
       </div>
     </header>
 
@@ -454,7 +528,18 @@
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    // --- Supabase config (safe to commit; the anon key is public by design and
+    // --- is protected by row-level security). Replace both placeholders with
+    // --- your project's values from Supabase → Project Settings → API.
+    const SUPABASE_URL = "https://ybcvvfzyefbnzszcuzmh.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_AERF7vj4DeYYneiWNyezsQ_1L-TVizG";
+
+    let supabaseClient = null;
+    let currentUser = null;
+    const modeUpdatedAt = {}; // modeKey -> last-known updated_at, for the optimistic lock
+
     const MODE_STORAGE_KEYS = {
       pawapuro: "game-stat-pawapuro-json-v1",
       prospi: "game-stat-prospi-json-v1"
@@ -462,11 +547,6 @@
     const MODE_DATA_FILES = {
       pawapuro: "data/pawapuro.json",
       prospi: "data/prospi.json"
-    };
-    const LEGACY_COMBINED_STORAGE_KEY = "game-stat-json-v2";
-    const LEGACY_PROSPI_STORAGE_KEYS = {
-      hitters: "game-stat-player-sheet-v1",
-      pitchers: "game-stat-pitcher-sheet-v1"
     };
     const ACTIVE_MODE_KEY = "game-stat-active-mode-v2";
     const ACTIVE_SHEET_KEY = "game-stat-active-sheet-v2";
@@ -755,67 +835,36 @@
       return normalizeModeData(modeKey, await response.json());
     }
 
-    function loadLegacyModeData(modeKey) {
-      try {
-        const combined = localStorage.getItem(LEGACY_COMBINED_STORAGE_KEY);
-        if (combined) {
-          const parsed = JSON.parse(combined);
-          const modeSheets = parsed.sheets?.[modeKey];
-          if (modeSheets) {
-            return normalizeModeData(modeKey, {
-              activeSheet: parsed.activeMode === modeKey ? parsed.activeSheet : "hitters",
-              sheets: modeSheets
-            });
-          }
-        }
-      } catch (error) {
-        console.warn(error);
-      }
-
-      if (modeKey !== "prospi") return null;
-
-      try {
-        const legacySheets = {};
-        Object.entries(LEGACY_PROSPI_STORAGE_KEYS).forEach(([sheetKey, storageKey]) => {
-          const saved = localStorage.getItem(storageKey);
-          if (saved) legacySheets[sheetKey] = JSON.parse(saved);
-        });
-        if (legacySheets.hitters || legacySheets.pitchers) {
-          return normalizeModeData("prospi", {
-            activeSheet: legacySheets.hitters ? "hitters" : "pitchers",
-            sheets: legacySheets
-          });
-        }
-      } catch (error) {
-        console.warn(error);
-      }
-
-      return null;
+    function emptyModeData(modeKey) {
+      return normalizeModeData(modeKey, { activeSheet: "hitters", sheets: { hitters: [], pitchers: [] } });
     }
 
     async function loadModeData(modeKey, { forceSeed = false } = {}) {
       if (!forceSeed && modeDataCache[modeKey]) return modeDataCache[modeKey];
 
-      if (!forceSeed) {
-        try {
-          const saved = localStorage.getItem(MODE_STORAGE_KEYS[modeKey]);
-          if (saved) {
-            modeDataCache[modeKey] = normalizeModeData(modeKey, JSON.parse(saved));
-            return modeDataCache[modeKey];
-          }
-        } catch (error) {
-          console.warn(error);
-        }
-
-        const legacyData = loadLegacyModeData(modeKey);
-        if (legacyData) {
-          modeDataCache[modeKey] = legacyData;
-          localStorage.setItem(MODE_STORAGE_KEYS[modeKey], JSON.stringify(legacyData));
-          return modeDataCache[modeKey];
-        }
+      // "重設範例" — load the bundled dummy seed and overwrite the cloud row.
+      if (forceSeed) {
+        modeDataCache[modeKey] = await loadModeSeed(modeKey);
+        await saveModeToCloud(modeKey, { overwrite: true });
+        return modeDataCache[modeKey];
       }
 
-      modeDataCache[modeKey] = await loadModeSeed(modeKey);
+      // Supabase is the source of truth. A fresh account has no row → empty tables (D7).
+      const { data, error } = await supabaseClient
+        .from("user_tables")
+        .select("data, updated_at")
+        .eq("user_id", currentUser.id)
+        .eq("table_id", modeKey)
+        .maybeSingle();
+      if (error) throw error;
+
+      if (data) {
+        modeUpdatedAt[modeKey] = data.updated_at;
+        modeDataCache[modeKey] = normalizeModeData(modeKey, data.data);
+      } else {
+        modeUpdatedAt[modeKey] = null;
+        modeDataCache[modeKey] = emptyModeData(modeKey);
+      }
       return modeDataCache[modeKey];
     }
 
@@ -823,13 +872,87 @@
       return modeDataCache[state.activeMode];
     }
 
+    let cloudSaveTimer = null;
+
     function saveState() {
       const modeData = getActiveModeData();
       if (!modeData) return;
       modeData.activeSheet = state.activeSheet;
+      // UI preferences stay local; user data goes to the cloud.
       localStorage.setItem(ACTIVE_MODE_KEY, state.activeMode);
       localStorage.setItem(ACTIVE_SHEET_KEY, state.activeSheet);
-      localStorage.setItem(MODE_STORAGE_KEYS[state.activeMode], JSON.stringify(buildStorageExport()));
+
+      const modeKey = state.activeMode;
+      window.clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = window.setTimeout(() => saveModeToCloud(modeKey), 800);
+    }
+
+    // Optimistic-lock write (D12): a save based on a stale updated_at is rejected
+    // so a second device can't silently clobber the first.
+    async function saveModeToCloud(modeKey, { overwrite = false } = {}) {
+      if (!supabaseClient || !currentUser) return;
+      const modeData = modeDataCache[modeKey];
+      if (!modeData) return;
+      const blob = {
+        schemaVersion: SCHEMA_VERSION,
+        mode: modeKey,
+        activeSheet: modeData.activeSheet,
+        sheets: modeData.sheets
+      };
+      const expected = modeUpdatedAt[modeKey];
+
+      try {
+        if (overwrite || expected == null) {
+          // No known row yet, or a deliberate replace (reset/import): upsert.
+          const { data, error } = await supabaseClient
+            .from("user_tables")
+            .upsert(
+              { user_id: currentUser.id, table_id: modeKey, data: blob },
+              { onConflict: "user_id,table_id" }
+            )
+            .select("updated_at")
+            .maybeSingle();
+          if (error) throw error;
+          modeUpdatedAt[modeKey] = data?.updated_at ?? null;
+        } else {
+          const { data, error } = await supabaseClient
+            .from("user_tables")
+            .update({ data: blob })
+            .eq("user_id", currentUser.id)
+            .eq("table_id", modeKey)
+            .eq("updated_at", expected)
+            .select("updated_at")
+            .maybeSingle();
+          if (error) throw error;
+          if (!data) {
+            await onStaleConflict(modeKey);
+            return;
+          }
+          modeUpdatedAt[modeKey] = data.updated_at;
+        }
+        setStatus("已同步至雲端");
+      } catch (error) {
+        console.warn(error);
+        setStatus("雲端儲存失敗，請檢查連線");
+      }
+    }
+
+    async function onStaleConflict(modeKey) {
+      const reload = window.confirm(
+        "這份資料已在其他裝置更新。要重新載入雲端版本嗎？（此處尚未儲存的修改將會遺失。可先取消並匯出備份。）"
+      );
+      if (!reload) {
+        setStatus("已保留本機修改，但雲端儲存被拒（資料已在他處更新）");
+        return;
+      }
+      delete modeDataCache[modeKey];
+      modeUpdatedAt[modeKey] = null;
+      await loadModeData(modeKey);
+      if (state.activeMode === modeKey) {
+        state.activeSheet = getActiveModeData().activeSheet;
+        render();
+      }
+      setStatus("已重新載入雲端資料");
     }
 
     function buildStorageExport() {
@@ -1127,6 +1250,7 @@
           state.activeMode = modeKey;
           state.activeSheet = modeDataCache[modeKey].activeSheet;
           render();
+          saveModeToCloud(modeKey, { overwrite: true });
           setStatus(`已匯入 ${modes[modeKey].label} JSON`);
         } catch (error) {
           console.warn(error);
@@ -1191,6 +1315,118 @@
       }
     });
 
+    // ---- Auth (Google OAuth via Supabase) ----------------------------------
+    const authGateEl = document.querySelector("#authGate");
+    const authHintEl = document.querySelector("#authHint");
+    const appEl = document.querySelector("main.app");
+    const userEmailEl = document.querySelector("#userEmail");
+    const localDataWarnEl = document.querySelector("#localDataWarn");
+
+    function isSupabaseConfigured() {
+      return (
+        !!supabaseClient &&
+        !SUPABASE_URL.includes("YOUR_PROJECT") &&
+        !SUPABASE_ANON_KEY.includes("YOUR_ANON")
+      );
+    }
+
+    function modesWithLocalData() {
+      return Object.entries(MODE_STORAGE_KEYS)
+        .filter(([, key]) => {
+          try { return !!localStorage.getItem(key); } catch (error) { return false; }
+        })
+        .map(([modeKey]) => modeKey);
+    }
+
+    // Pre-login safeguard (D13): let the user back up any pre-existing local data
+    // before the cloud (which starts empty) becomes the source of truth.
+    function exportLocalData() {
+      const present = modesWithLocalData();
+      if (!present.length) return;
+      present.forEach((modeKey) => {
+        const raw = localStorage.getItem(MODE_STORAGE_KEYS[modeKey]);
+        if (!raw) return;
+        const blob = new Blob([raw], { type: "application/json;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `game-stat-${modeKey}-backup.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      });
+    }
+
+    async function signInWithGoogle() {
+      if (!isSupabaseConfigured()) return;
+      await supabaseClient.auth.signInWithOAuth({
+        provider: "google",
+        options: { scopes: "openid email", redirectTo: window.location.href.split("#")[0] }
+      });
+    }
+
+    async function signOut() {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      window.location.reload();
+    }
+
+    async function deleteMyData() {
+      if (!supabaseClient || !currentUser) return;
+      if (!window.confirm("確定要刪除你所有的雲端資料嗎？此動作無法復原。")) return;
+      const { error } = await supabaseClient.rpc("delete_account");
+      if (error) {
+        console.warn(error);
+        setStatus("刪除失敗，請稍後再試");
+        return;
+      }
+      Object.keys(modeDataCache).forEach((key) => delete modeDataCache[key]);
+      Object.keys(modeUpdatedAt).forEach((key) => delete modeUpdatedAt[key]);
+      await loadModeData(state.activeMode);
+      state.activeSheet = getActiveModeData().activeSheet;
+      render();
+      setStatus("已刪除雲端資料");
+    }
+
+    async function enterApp(user) {
+      if (currentUser) return;
+      currentUser = user;
+      authGateEl.hidden = true;
+      appEl.hidden = false;
+      userEmailEl.textContent = user.email || "";
+      await init();
+    }
+
+    async function bootstrap() {
+      supabaseClient = SUPABASE_URL && SUPABASE_ANON_KEY
+        ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        : null;
+
+      if (modesWithLocalData().length) localDataWarnEl.hidden = false;
+
+      if (!isSupabaseConfigured()) {
+        authGateEl.hidden = false;
+        document.querySelector("#googleSignIn").disabled = true;
+        authHintEl.textContent =
+          "尚未設定 Supabase：請在 index.html 填入 SUPABASE_URL 與 SUPABASE_ANON_KEY。";
+        return;
+      }
+
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        await enterApp(session.user);
+      } else {
+        authGateEl.hidden = false;
+      }
+
+      supabaseClient.auth.onAuthStateChange((event, sess) => {
+        if (event === "SIGNED_IN" && sess) enterApp(sess.user);
+        if (event === "SIGNED_OUT") window.location.reload();
+      });
+    }
+
+    document.querySelector("#googleSignIn").addEventListener("click", signInWithGoogle);
+    document.querySelector("#signOut").addEventListener("click", signOut);
+    document.querySelector("#deleteData").addEventListener("click", deleteMyData);
+    document.querySelector("#exportLocal").addEventListener("click", exportLocalData);
+
     async function init() {
       try {
         await loadModeData(state.activeMode);
@@ -1206,7 +1442,7 @@
       }
     }
 
-    init();
+    bootstrap();
   </script>
 </body>
 </html>
