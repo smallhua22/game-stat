@@ -41,7 +41,7 @@ const SnapshotComparison = (() => {
     const sign = rounded < 0 ? "−" : delta && rounded > 0 ? "+" : "";
     const absolute = Math.abs(rounded);
     return sign + (field === "ip"
-      ? `${Math.floor(absolute / 3)}${["", "⅓", "⅔"][absolute % 3]}`
+      ? `${Math.floor(absolute / 3)}.${absolute % 3}`
       : String(absolute));
   }
 

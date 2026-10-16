@@ -41,13 +41,19 @@ test("slash-line rates are compared separately", () => {
   }
 });
 
-test("baseball innings use outs, including fractional carry and negative changes", () => {
+test("baseball innings accept and display dot notation while calculating in outs", () => {
   const before = comparison.value({ ip: "10.2" }, "ip");
   const after = comparison.value({ ip: "11.1" }, "ip");
   assert.equal(after - before, 2);
-  assert.equal(comparison.format(after - before, "ip", true), "+0⅔");
-  assert.equal(comparison.format(before - after, "ip", true), "−0⅔");
-  assert.equal(comparison.format(after, "ip"), "11⅓");
+  assert.equal(comparison.format(after - before, "ip", true), "+0.2");
+  assert.equal(comparison.format(before - after, "ip", true), "−0.2");
+  for (const [ip, outs, display] of [["10.2", 32, "10.2"], [11.1, 34, "11.1"],
+    ["0.2", 2, "0.2"], ["0", 0, "0.0"], ["11", 33, "11.0"], ["11.0", 33, "11.0"]]) {
+    assert.equal(comparison.value({ ip }, "ip"), outs);
+    assert.equal(comparison.format(outs, "ip"), display);
+  }
+  assert.equal(comparison.format(3, "ip", true), "+1.0");
+  assert.equal(comparison.format(0, "ip", true), "0.0");
   for (const ip of ["1.3", "1.9", "1.12", "-1.1", "1x", "", null,
     [], [11.1], {}, { toString: null }, Infinity, "9".repeat(400), Number.MAX_SAFE_INTEGER]) {
     assert.equal(comparison.value({ ip }, "ip"), null);

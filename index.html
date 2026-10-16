@@ -508,11 +508,12 @@
       <details class="snapshot-panel">
         <summary>成長比較（JSON 快照）</summary>
         <p id="snapshotHelp">選擇較早匯出的 JSON，依同一資料表的唯一姓名配對（忽略前後空白）。同名或改名不會自動配對；差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
+        <p id="snapshotIpHelp">IP 輸入與顯示均使用棒球記法：10.2 表示 10 局又 2 個出局數；11.1 − 10.2 = +0.2（2 個出局數），不必輸入分數。</p>
         <div class="snapshot-tools">
           <button type="button" id="loadSnapshot">選擇較早快照</button>
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
           <label for="snapshotMetric">比較欄位</label>
-          <select id="snapshotMetric" aria-describedby="snapshotHelp"></select>
+          <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
         </div>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>

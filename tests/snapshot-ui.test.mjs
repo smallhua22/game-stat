@@ -5,7 +5,7 @@ import vm from "node:vm";
 import comparison from "../snapshot-comparison.js";
 
 // Run the real comparison handlers/rendering with a minimal in-memory DOM.
-// No cloud client, save function, network, or browser is supplied.
+// No cloud client, persistent storage, network, or browser is supplied.
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const block = html.slice(html.indexOf("    const comparisonSnapshots = {}"), html.indexOf("    function toNumber(raw)"));
 const snapshot = (hr = "3", mode = "pawapuro") => ({ schemaVersion: 2, mode,
@@ -24,11 +24,15 @@ function harness() {
   const state = { activeMode: "pawapuro", activeSheet: "hitters" };
   const players = { hitters: [{ name: "A", hr: "8" }], pitchers: [{ name: "P", ip: "11.1", era: "3" }] };
   const context = vm.createContext({ document: { querySelector: el, createElement: node }, state,
+    rowsEl: el("#rows"), outputEl: el("#output"), updateComputedCells() {}, saveState() {},
+    buildExport: () => ({ sheets: players }),
     SnapshotComparison: comparison, modes: { pawapuro: { label: "Pawapuro" }, prospi: { label: "Prospi" } },
     Option: function (label, value) { return { label, value }; },
     getSheetConfig: () => ({ columns: ["hr", "era", "ip"].map((field) => ({ field, label: field })) }),
     getActivePlayers: () => players[state.activeSheet] });
   vm.runInContext(block, context);
+  vm.runInContext(html.slice(html.indexOf('    rowsEl.addEventListener("input"'),
+    html.indexOf("    tabButtons.forEach((button) => button.addEventListener")), context);
   const run = (code) => vm.runInContext(code, context);
   const render = () => run("renderSnapshotComparison()");
   const upload = (data, name = "earlier.json") => {
@@ -54,10 +58,26 @@ test("real handlers render values, update with edits, switch sheets, and clear w
   h.render();
   h.el("#snapshotMetric").value = "ip";
   h.el("#snapshotMetric").listeners.change();
-  assert.deepEqual(row(), ["P", "10⅔", "11⅓", "+0⅔", "可比較"]);
+  assert.deepEqual(row(), ["P", "10.2", "11.1", "+0.2", "可比較"]);
   h.clear();
   assert.equal(h.el("#snapshotResults").hidden, true);
   assert.equal(h.el("#clearSnapshot").disabled, true);
+});
+
+test("typing ordinary baseball IP updates the real input handler without fractions", async () => {
+  const h = harness();
+  await h.upload(snapshot());
+  h.state.activeSheet = "pitchers";
+  h.render();
+  h.el("#snapshotMetric").value = "ip";
+  h.el("#snapshotMetric").listeners.change();
+  for (const [ip, delta] of [["10.2", "0.0"], ["11.1", "+0.2"], ["0.2", "−10.0"]]) {
+    h.el("#rows").listeners.input({ target: { dataset: { index: "0", field: "ip" },
+      value: ip, closest: () => null } });
+    assert.equal(h.players.pitchers[0].ip, ip);
+    const row = h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent);
+    assert.deepEqual(row, ["P", "10.2", ip, delta, "可比較"]);
+  }
 });
 
 test("invalid JSON and wrong-mode files preserve the previous snapshot", async () => {
