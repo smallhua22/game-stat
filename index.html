@@ -415,6 +415,22 @@
 
     .local-warn button { margin-top: 8px; }
 
+    .snapshot-panel {
+      grid-column: 1 / -1;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .snapshot-panel summary { cursor: pointer; font-weight: 650; }
+    .snapshot-panel p { color: var(--muted); font-size: 13px; }
+    #snapshotStatus { overflow-wrap: anywhere; }
+    .snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .snapshot-scroll { max-height: 280px; overflow: auto; margin-top: 12px; }
+    .snapshot-results { min-width: 540px; table-layout: auto; }
+    .snapshot-results caption { text-align: left; padding: 8px; font-size: 13px; }
+
     .user-control { display: flex; align-items: center; gap: 8px; }
 
     .user-email {
@@ -491,6 +507,26 @@
     </header>
 
     <section class="workspace" aria-label="選手資料工作區">
+      <details class="snapshot-panel">
+        <summary>成長比較（JSON 快照）</summary>
+        <p id="snapshotHelp">選擇較早匯出的 JSON，依同一資料表的唯一姓名配對（忽略前後空白）。同名或改名不會自動配對；差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
+        <p id="snapshotIpHelp">IP 輸入與顯示均使用棒球記法：10.2 表示 10 局又 2 個出局數；11.1 − 10.2 = +0.2（2 個出局數），不必輸入分數。</p>
+        <div class="snapshot-tools">
+          <button type="button" id="loadSnapshot">選擇較早快照</button>
+          <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
+          <label for="snapshotMetric">比較欄位</label>
+          <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
+          <button type="button" id="clearSnapshot" disabled>清除快照</button>
+        </div>
+        <p id="snapshotStatus" role="status" aria-live="polite"></p>
+        <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
+          <table class="snapshot-results">
+            <caption>目前數值包含畫面上尚未同步的修改；— 表示無法計算，並非零。</caption>
+            <thead><tr><th scope="col">選手</th><th scope="col">較早快照</th><th scope="col">目前</th><th scope="col">差值</th><th scope="col">說明</th></tr></thead>
+            <tbody id="snapshotRows"></tbody>
+          </table>
+        </div>
+      </details>
       <div class="sheet">
         <div class="sheet-header">
           <strong id="sheetTitle">資料表</strong>
@@ -528,6 +564,7 @@
     </section>
   </main>
 
+  <script src="snapshot-comparison.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     // --- Supabase config (safe to commit; the anon key is public by design and
@@ -674,6 +711,79 @@
     const modeDataCache = {};
     const columnVisibility = loadColumnVisibility();
     let metadataFolded = localStorage.getItem(FOLD_STORAGE_KEY) === "true";
+
+    const comparisonSnapshots = {};
+    const comparisonMetrics = {};
+    const comparisonLoads = {};
+    const snapshotFileEl = document.querySelector("#snapshotFile");
+    const snapshotMetricEl = document.querySelector("#snapshotMetric");
+    const snapshotStatusEl = document.querySelector("#snapshotStatus");
+    const snapshotRowsEl = document.querySelector("#snapshotRows");
+    const numericSnapshotFields = new Set([
+      "age", "velocity", "currentSpirit", "trainableSpirit", "maxSpirit",
+      "pa", "ab", "hr", "rbi", "sb", "k", "bb", "gp", "ip", "era", "whip", "fip",
+      "h", "hbp", "w", "l", "hld", "sv"
+    ]);
+
+    function renderSnapshotComparison() {
+      const scope = `${state.activeMode}:${state.activeSheet}`;
+      const columns = getSheetConfig().columns.filter((column) => numericSnapshotFields.has(column.field));
+      if (state.activeSheet === "hitters") columns.push(...["avg", "obp", "slg"].map((field) => ({ field, label: field.toUpperCase() })));
+      snapshotMetricEl.replaceChildren(...columns.map((column) => new Option(column.label, column.field)));
+      snapshotMetricEl.value = comparisonMetrics[scope] || (state.activeSheet === "hitters" ? "hr" : "era");
+      const snapshot = comparisonSnapshots[state.activeMode];
+      document.querySelector("#clearSnapshot").disabled = !snapshot;
+      document.querySelector("#snapshotResults").hidden = !snapshot;
+      snapshotMetricEl.disabled = !snapshot;
+      snapshotRowsEl.replaceChildren();
+      if (!snapshot) {
+        snapshotStatusEl.textContent = `尚未選擇 ${modes[state.activeMode].label} 快照。`;
+        return;
+      }
+      const field = snapshotMetricEl.value;
+      const rows = SnapshotComparison.compare(getActivePlayers(), snapshot.data.sheets[state.activeSheet], field);
+      const comparable = rows.filter((row) => !row.status).length;
+      const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
+      const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";
+      snapshotStatusEl.textContent = `${snapshot.name}（${dateLabel}）｜${comparable} 位可比較，${rows.length - comparable} 位無法比較。`;
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        [row.name, SnapshotComparison.format(row.before, field), SnapshotComparison.format(row.after, field),
+          SnapshotComparison.format(row.delta, field, true), row.status || "可比較"].forEach((text) => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.append(td);
+        });
+        snapshotRowsEl.append(tr);
+      });
+    }
+
+    document.querySelector("#loadSnapshot").addEventListener("click", () => snapshotFileEl.click());
+    snapshotFileEl.addEventListener("change", async () => {
+      const file = snapshotFileEl.files?.[0];
+      if (!file) return;
+      const mode = state.activeMode;
+      const generation = comparisonLoads[mode] = (comparisonLoads[mode] || 0) + 1;
+      snapshotFileEl.value = "";
+      try {
+        const data = SnapshotComparison.validate(JSON.parse(await file.text()), mode);
+        if (comparisonLoads[mode] !== generation) return;
+        comparisonSnapshots[mode] = { name: file.name, data };
+        if (state.activeMode === mode) renderSnapshotComparison();
+      } catch (error) {
+        if (comparisonLoads[mode] !== generation || state.activeMode !== mode) return;
+        snapshotStatusEl.textContent = `無法比較：${error instanceof SyntaxError ? "JSON 格式不正確。" : error.message}`;
+      }
+    });
+    snapshotMetricEl.addEventListener("change", () => {
+      comparisonMetrics[`${state.activeMode}:${state.activeSheet}`] = snapshotMetricEl.value;
+      renderSnapshotComparison();
+    });
+    document.querySelector("#clearSnapshot").addEventListener("click", () => {
+      comparisonLoads[state.activeMode] = (comparisonLoads[state.activeMode] || 0) + 1;
+      delete comparisonSnapshots[state.activeMode];
+      renderSnapshotComparison();
+    });
 
     function toNumber(raw) {
       const value = parseFloat(raw);
@@ -1156,6 +1266,7 @@
       const widthColumns = metadataFolded ? visibleColumns.filter((column) => !column.metadata) : visibleColumns;
       tableWrapEl.style.setProperty("--table-min-width", `${getTableMinWidth(widthColumns)}px`);
       applyMetadataFold();
+      renderSnapshotComparison();
       saveState();
     }
 
@@ -1277,6 +1388,7 @@
       const player = getActivePlayers()[Number(index)];
       player[field] = event.target.value;
       updateComputedCells(event.target.closest("tr"), player);
+      renderSnapshotComparison();
       outputEl.value = JSON.stringify(buildExport(), null, 2);
       saveState();
     });
