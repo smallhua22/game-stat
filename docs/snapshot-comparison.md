@@ -16,12 +16,21 @@ saved to the cloud, or written back to the original file. Current values include
 Existing `schemaVersion: 2` exports are supported; both sheets must be present. The `exportedAt` time is
 shown if supplied and valid; otherwise “檔案未提供時間” (file has no timestamp) is shown. Dates are not guessed.
 
-There are no stable player IDs, so matching uses unique, case-sensitive names within the same mode and sheet,
-ignoring surrounding whitespace. Renamed players are separate players; duplicate names are not matched.
-Confirm that matched names refer to the same player and statistical period, especially Prospi cards from
-different Series. New, snapshot-only, and unmatched players are labeled. Changes compare the two snapshots;
-they do not calculate rate statistics for the intervening period.
+Rows now have a `rowId` (a lowercase UUID v4), independent of visible columns. IDs survive edits,
+renames, reordering, cloud saves and JSON exports/imports; duplicating or creating a row creates a new ID.
+Comparisons use IDs first within the same mode and sheet, so renames and duplicate names can match.
+Different IDs never match solely by name. Invalid or repeated IDs reject a file instead of merging rows.
 
+Older schemaVersion 2 tables receive IDs on load; the normal cloud save persists them. Until synchronization
+succeeds, export a backup before leaving the page. Existing optimistic conflict handling still applies.
+An older ID-less comparison file uses unique, case-sensitive trimmed names; ambiguous or absent matches
+remain unmatched. Confirm that legacy matched names refer to the same player and statistical period,
+especially Prospi cards from different Series. Keep the exported IDs when editing files outside the app.
+
+This is the row-identity foundation for issue #3, not its complete legacy-linking workflow. A saved chooser
+for ambiguous/renamed historical rows and reusable historical linking decisions remain future work.
+Importing an ID-less file as the current table creates fresh identities, not links to the replaced table.
+Comparisons do not calculate rate statistics for the intervening period.
 Missing, blank, or invalid values show `—`, never zero. Existing JSON exports contain only visible columns;
 show a metric before downloading a snapshot if you want to compare it later. Comparison itself is independent
 of current column visibility. Raw numeric fields and AVG/OBP/SLG are supported; letter grades, free text,
@@ -51,11 +60,18 @@ IP 輸入與顯示均使用棒球記法：`10.2` 表示 10 局又 2 個出局數
 目前數值包含尚未同步的修改。可接受現有 `schemaVersion: 2` 匯出檔；兩個資料表都必須存在。
 若檔案提供有效的 `exportedAt` 時間則顯示該時間，否則標示「檔案未提供時間」，不猜測快照日期。
 
-目前資料沒有穩定的選手 ID，因此只依同一模式、同一資料表中的唯一姓名配對，忽略前後空白，
-保留大小寫。改名視為不同選手；同名不自動配對。請確認配對的是同一位選手和相同統計期間，
-尤其是 Prospi 中不同 Series 的同名卡片。新選手、僅快照有的選手與無法配對的列均會標示。
-此功能呈現兩份資料的差異，不推算期間內的比率成績。
+每列現在都有獨立於可見欄位的 `rowId`（小寫 UUID v4）。編輯、改名、排序、雲端儲存及
+JSON 匯出／匯入均保留 ID；新增或複製列則產生新 ID。比較優先依同模式、同資料表的 ID 配對，
+因此改名或同名列也能正確比較。不同 ID 不會只因姓名相同而合併；無效或重複 ID 會拒絕載入檔案。
 
+舊版 schemaVersion 2 資料表載入時會取得 ID，並由一般雲端儲存流程保存。同步成功前，
+離開頁面前請先匯出備份；既有的版本衝突保護仍然適用。沒有 ID 的舊比較檔仍使用唯一姓名，
+忽略前後空白但保留大小寫；同名或找不到的列維持未配對。請確認舊檔配對的是同一選手與統計期間，
+尤其是 Prospi 中不同 Series 的同名卡片。在應用程式外修改檔案時，請保留匯出的 ID。
+
+這是 issue #3 的列識別基礎，尚未完成全部舊資料連結流程。同名／改名歷史列的選擇介面與
+連結決定的永久保存將另行實作。將無 ID 檔案匯入成目前資料表會建立新身分，並非連結被替換的資料。
+比較不推算期間內的比率成績。
 缺少、空白或無效的數值顯示 `—`，不當作零。原有 JSON 匯出只包含已顯示的欄位；
 若要日後比較某欄位，請在下載快照前將它顯示。成長比較本身不受目前欄位顯示設定影響。
 目前支援原始數值欄位及 AVG／OBP／SLG，不包含字母評價、自由文字和計算欄位。
