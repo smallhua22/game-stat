@@ -75,8 +75,8 @@ test("invalid or duplicate imported IDs reject before replacing current data", (
   const shared = id();
   for (const bad of ["", null, 42, "not-a-uuid", shared.toUpperCase()]) {
     h.context.input = { sheets: { hitters: [{ name: "A", rowId: bad }], pitchers: [] } };
-    assert.throws(() => h.run("normalizeModeData('pawapuro', input)"), /rowId/);
-    assert.throws(() => comparison.validate({ ...h.context.input, schemaVersion: 2, mode: "pawapuro" }, "pawapuro"), /rowId/);
+    assert.throws(() => h.run("normalizeModeData('pawapuro', input)"), /識別資訊/);
+    assert.throws(() => comparison.validate({ ...h.context.input, schemaVersion: 2, mode: "pawapuro" }, "pawapuro"), /識別資訊/);
   }
   h.context.input = { sheets: { hitters: [{ name: "A", rowId: shared }], pitchers: [{ name: "B", rowId: shared }] } };
   assert.throws(() => h.run("normalizeModeData('pawapuro', input)"), /重複/);
@@ -106,4 +106,40 @@ test("legacy fallback cannot steal an ID match; duplicate IDs fail safely", () =
 test("ambiguous legacy rows are labeled unmatched rather than absent", () => {
   const rows = comparison.compare([{ name: "A" }, { name: "A" }], [{ name: "A" }], "hr");
   assert.equal(rows.at(-1).status, "未配對的快照列");
+});
+
+test("real import handler rejects damaged identities without changing data or saving", () => {
+  for (const mode of ["pawapuro", "prospi"]) {
+    const h = harness(mode), shared = id();
+    let status, saves = 0, renders = 0;
+    Object.assign(h.context, { jsonFileEl: { value: "selected.json" },
+      FileReader: class {
+        addEventListener(_event, handler) { this.loaded = handler; }
+        readAsText(file) { this.result = JSON.stringify(file); this.loaded(); }
+      },
+      console: { warn() {} }, setStatus(message) { status = message; },
+      render() { renders++; }, saveModeToCloud() { saves++; } });
+    h.run(`modeDataCache[state.activeMode] = normalizeModeData(state.activeMode,
+      { sheets: { hitters: [{ name: "Existing" }], pitchers: [] } });`);
+    const previous = h.run("getActiveModeData()");
+    vm.runInContext(between("    function importJsonFile(", "    function updateComputedCells("), h.context);
+    for (const players of [[{ name: "A", rowId: "broken" }],
+      [{ name: "A", rowId: shared }, { name: "B", rowId: shared }]]) {
+      h.context.file = { mode, sheets: { hitters: players, pitchers: [] } };
+      h.run("importJsonFile(file)");
+      assert.equal(h.run("getActiveModeData()"), previous);
+      assert.equal(h.context.state.activeMode, mode);
+      assert.equal(h.context.jsonFileEl.value, "");
+      assert.match(status, /原有資料未變更/);
+      assert.doesNotMatch(status, /rowId|UUID|修正/);
+      h.context.file.mode = mode === "pawapuro" ? "prospi" : "pawapuro";
+      h.run("importJsonFile(file)");
+      assert.equal(h.run("getActiveModeData()"), previous);
+      assert.equal(h.run("modeDataCache[file.mode]"), undefined);
+      assert.equal(h.context.state.activeMode, mode);
+      assert.equal(h.context.state.activeSheet, "hitters");
+    }
+    assert.equal(saves, 0);
+    assert.equal(renders, 0);
+  }
 });

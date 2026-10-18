@@ -16,16 +16,18 @@ saved to the cloud, or written back to the original file. Current values include
 Existing `schemaVersion: 2` exports are supported; both sheets must be present. The `exportedAt` time is
 shown if supplied and valid; otherwise “檔案未提供時間” (file has no timestamp) is shown. Dates are not guessed.
 
-Rows now have a `rowId` (a lowercase UUID v4), independent of visible columns. IDs survive edits,
-renames, reordering, cloud saves and JSON exports/imports; duplicating or creating a row creates a new ID.
+The app recognizes the same player record across edits, renames, reordering, cloud saves and JSON
+exports/imports. Creating or duplicating a row starts a separate record. This uses internal `rowId`
+metadata (a lowercase UUID v4), independent of visible columns; users do not need to manage it.
 Comparisons use IDs first within the same mode and sheet, so renames and duplicate names can match.
-Different IDs never match solely by name. Invalid or repeated IDs reject a file instead of merging rows.
+Different IDs never match solely by name. Damaged or repeated identity information prevents safe loading;
+the app explains the problem, suggests a complete app export, and leaves existing data unchanged.
 
 Older schemaVersion 2 tables receive IDs on load; the normal cloud save persists them. Until synchronization
 succeeds, export a backup before leaving the page. Existing optimistic conflict handling still applies.
 An older ID-less comparison file uses unique, case-sensitive trimmed names; ambiguous or absent matches
 remain unmatched. Confirm that legacy matched names refer to the same player and statistical period,
-especially Prospi cards from different Series. Keep the exported IDs when editing files outside the app.
+especially Prospi cards from different Series. A complete, unmodified app export retains the record links.
 
 This is the row-identity foundation for issue #3, not its complete legacy-linking workflow. A saved chooser
 for ambiguous/renamed historical rows and reusable historical linking decisions remain future work.
@@ -42,6 +44,11 @@ Run `node --test tests/*.test.mjs` from the project root. Tests use Node's built
 installation or database connection. They cover numerical and matching logic and execute the real comparison
 and input handlers in an in-memory DOM; they do not replace visual browser testing. These offline tests run
 automatically on pull requests. The existing Supabase release gate is unchanged.
+
+CI also runs `tests/browser-smoke.mjs` in real Chromium on a GitHub-hosted runner, independently of the
+user's computer. It installs pinned Playwright 1.57.0 and Chromium, serves the real app, mocks only
+authentication/backend storage, and blocks other external requests. Screenshots are retained for seven
+days. This covers UI behavior; it does not verify live sign-in, Supabase permissions, or deployment.
 
 ## 繁體中文
 
@@ -60,14 +67,16 @@ IP 輸入與顯示均使用棒球記法：`10.2` 表示 10 局又 2 個出局數
 目前數值包含尚未同步的修改。可接受現有 `schemaVersion: 2` 匯出檔；兩個資料表都必須存在。
 若檔案提供有效的 `exportedAt` 時間則顯示該時間，否則標示「檔案未提供時間」，不猜測快照日期。
 
-每列現在都有獨立於可見欄位的 `rowId`（小寫 UUID v4）。編輯、改名、排序、雲端儲存及
-JSON 匯出／匯入均保留 ID；新增或複製列則產生新 ID。比較優先依同模式、同資料表的 ID 配對，
-因此改名或同名列也能正確比較。不同 ID 不會只因姓名相同而合併；無效或重複 ID 會拒絕載入檔案。
+應用程式會在編輯、改名、排序、雲端儲存及 JSON 匯出／匯入後辨識同一筆選手紀錄；
+新增或複製列則建立獨立紀錄。這透過內部 `rowId`（小寫 UUID v4）記錄，獨立於可見欄位，
+使用者不需要管理。比較優先依同模式、同資料表的 ID 配對，因此改名或同名列也能正確比較。
+不同 ID 不會只因姓名相同而合併。識別資訊損毀或重複時，應用程式會說明無法安全載入，
+建議改用完整匯出檔，並保留原有資料。
 
 舊版 schemaVersion 2 資料表載入時會取得 ID，並由一般雲端儲存流程保存。同步成功前，
 離開頁面前請先匯出備份；既有的版本衝突保護仍然適用。沒有 ID 的舊比較檔仍使用唯一姓名，
 忽略前後空白但保留大小寫；同名或找不到的列維持未配對。請確認舊檔配對的是同一選手與統計期間，
-尤其是 Prospi 中不同 Series 的同名卡片。在應用程式外修改檔案時，請保留匯出的 ID。
+尤其是 Prospi 中不同 Series 的同名卡片。完整且未修改的應用程式匯出檔會保留紀錄間的連結。
 
 這是 issue #3 的列識別基礎，尚未完成全部舊資料連結流程。同名／改名歷史列的選擇介面與
 連結決定的永久保存將另行實作。將無 ID 檔案匯入成目前資料表會建立新身分，並非連結被替換的資料。
@@ -81,3 +90,7 @@ JSON 匯出／匯入均保留 ID；新增或複製列則產生新 ID。比較優
 在專案根目錄執行 `node --test tests/*.test.mjs`。使用 Node 內建測試工具，
 不需要套件安裝或資料庫連線。測試涵蓋數值及配對邏輯，並以記憶體 DOM 執行實際比較與輸入事件處理器；
 不取代瀏覽器外觀測試。Pull request 會自動執行這些離線測試；既有的 Supabase release gate 保持不變。
+
+CI 另以 GitHub 雲端執行器的真正 Chromium 執行 `tests/browser-smoke.mjs`，不依賴使用者的電腦。
+流程安裝固定版本 Playwright 1.57.0 與 Chromium，載入實際應用程式，只模擬登入及後端儲存，
+並阻擋其他對外請求。截圖保留七天；這驗證操作流程，不驗證正式登入、Supabase 權限或部署。

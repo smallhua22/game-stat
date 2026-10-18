@@ -7,7 +7,7 @@ const RowIdentity = (() => {
     Object.values(sheets).forEach((players) => players.forEach((player) => {
       if (!Object.hasOwn(player, "rowId")) return; // Older schemaVersion 2 data.
       if (!valid(player.rowId) || seen.has(player.rowId)) {
-        throw new Error("選手 rowId 無效或重複；請修正檔案中的 ID，資料未匯入。");
+        throw new Error("檔案中的選手識別資訊損毀或重複，無法安全載入。請改用應用程式匯出的完整檔案；原有資料未變更。");
       }
       seen.add(player.rowId);
     }));
@@ -15,7 +15,7 @@ const RowIdentity = (() => {
   function create() { return globalThis.crypto.randomUUID(); }
   function preserve(player) {
     if (Object.hasOwn(player, "rowId") && !valid(player.rowId)) {
-      throw new Error("選手 rowId 無效，資料未匯入。");
+      throw new Error("選手識別資訊損毀，無法安全載入；原有資料未變更。");
     }
     return player.rowId ?? create();
   }

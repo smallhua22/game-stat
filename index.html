@@ -509,7 +509,7 @@
     <section class="workspace" aria-label="選手資料工作區">
       <details class="snapshot-panel">
         <summary>成長比較（JSON 快照）</summary>
-        <p id="snapshotHelp">選擇較早匯出的 JSON，優先依同一資料表的 rowId 配對，改名不影響；舊檔缺少 ID 時才依唯一姓名配對（忽略前後空白），同名不猜測；差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
+        <p id="snapshotHelp">選擇較早匯出的 JSON，比較同一資料表的選手紀錄；由此版本匯出的紀錄，改名後仍可配對。舊檔只依唯一姓名配對（忽略前後空白），同名或無法確認的紀錄維持未配對，不自動合併。差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
         <p id="snapshotIpHelp">IP 輸入與顯示均使用棒球記法：10.2 表示 10 局又 2 個出局數；11.1 − 10.2 = +0.2（2 個出局數），不必輸入分數。</p>
         <div class="snapshot-tools">
           <button type="button" id="loadSnapshot">選擇較早快照</button>

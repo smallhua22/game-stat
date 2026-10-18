@@ -90,6 +90,25 @@ test("invalid JSON and wrong-mode files preserve the previous snapshot", async (
   assert.equal(h.run("comparisonSnapshots.pawapuro.data.sheets.hitters[0].hr"), "3");
 });
 
+test("damaged identities and cancelled file selection preserve the previous snapshot", async () => {
+  const h = harness();
+  await h.upload(snapshot());
+  const previous = h.run("comparisonSnapshots.pawapuro");
+  for (const duplicate of [false, true]) {
+    const data = snapshot();
+    data.sheets.hitters[0].rowId = duplicate ? "11111111-1111-4111-8111-111111111111" : "broken";
+    if (duplicate) data.sheets.pitchers[0].rowId = data.sheets.hitters[0].rowId;
+    await h.upload(data);
+    assert.equal(h.run("comparisonSnapshots.pawapuro"), previous);
+    assert.match(h.el("#snapshotStatus").textContent, /原有資料未變更/);
+    assert.doesNotMatch(h.el("#snapshotStatus").textContent, /rowId|UUID|修正/);
+  }
+  h.el("#snapshotFile").files = [];
+  await h.el("#snapshotFile").listeners.change();
+  assert.equal(h.run("comparisonSnapshots.pawapuro"), previous);
+  assert.doesNotMatch(html.match(/<p id="snapshotHelp">(.*?)<\/p>/)[1], /rowId|UUID/);
+});
+
 test("clearing a snapshot invalidates a pending replacement", async () => {
   const h = harness();
   await h.upload(snapshot());

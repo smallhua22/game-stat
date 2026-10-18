@@ -18,3 +18,16 @@ jobs:
           node-version: 22
       - name: Test snapshot comparison without network or database access
         run: node --test tests/*.test.mjs
+      - name: Install pinned browser test tools
+        run: npm install --no-save --ignore-scripts playwright@1.57.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test the real app in isolated Chromium
+        run: node tests/browser-smoke.mjs
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-smoke-screenshots
+          path: browser-artifacts/
+          retention-days: 7
