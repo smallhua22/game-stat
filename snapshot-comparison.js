@@ -1,5 +1,6 @@
 // Pure, read-only helpers shared by the browser and dependency-free Node tests.
 const SnapshotComparison = (() => {
+  const identity = typeof module !== "undefined" ? require("./row-identity.js") : RowIdentity;
   function validate(input, mode) {
     if (!input || input.schemaVersion !== 2 || input.mode !== mode ||
         !["hitters", "pitchers"].every((sheet) => Array.isArray(input.sheets?.[sheet]) &&
@@ -7,6 +8,7 @@ const SnapshotComparison = (() => {
             !Array.isArray(player) && typeof player.name === "string"))) {
       throw new Error("請選擇相同模式、schemaVersion 2 且包含打者與投手資料的 JSON 匯出檔。");
     }
+    identity.validate(input.sheets);
     return input;
   }
 
@@ -54,20 +56,37 @@ const SnapshotComparison = (() => {
     };
     const currentNames = group(current);
     const earlierNames = group(earlier);
+    identity.validate({ current });
+    identity.validate({ earlier });
+    const earlierIds = new Map(earlier.filter((p) => p.rowId).map((p) => [p.rowId, p]));
+    const currentIds = new Set(current.map((p) => p.rowId).filter(Boolean));
+    const matched = new Set();
     const rows = current.map((player) => {
       const key = name(player);
-      const matches = earlierNames.get(key) || [];
-      const status = !key ? "未命名，無法配對" : currentNames.get(key).length > 1 || matches.length > 1
-        ? "同名，無法配對" : !matches.length ? "快照無此選手" : "";
-      const before = status ? null : value(matches[0], field);
+      let match = player.rowId ? earlierIds.get(player.rowId) : undefined;
+      let status = "";
+      if (!match) {
+        const candidates = earlierNames.get(key) || [];
+        status = !key ? "未命名，無法配對" : currentNames.get(key).length > 1 || candidates.length > 1
+          ? "同名，無法配對" : "快照無此選手";
+        const candidate = candidates[0];
+        // Legacy fallback must never override an ID match or join two different IDs.
+        if (key && currentNames.get(key).length === 1 && candidates.length === 1 &&
+            (!player.rowId || !candidate.rowId) &&
+            !(candidate.rowId && currentIds.has(candidate.rowId)) && !matched.has(candidate)) {
+          match = candidate;
+        }
+      }
+      if (match) { matched.add(match); status = ""; }
+      const before = match ? value(match, field) : null;
       const after = value(player, field);
       return { name: key || "（未命名）", before, after,
         delta: before === null || after === null ? null : after - before,
         status: status || (before === null || after === null ? "缺少或無效數值" : "") };
     });
     earlier.forEach((player) => {
-      if (!currentNames.has(name(player))) rows.push({ name: name(player) || "（未命名）",
-        before: value(player, field), after: null, delta: null, status: "目前無此選手" });
+      if (!matched.has(player)) rows.push({ name: name(player) || "（未命名）",
+        before: value(player, field), after: null, delta: null, status: currentNames.has(name(player)) ? "未配對的快照列" : "目前無此選手" });
     });
     return rows;
   }
