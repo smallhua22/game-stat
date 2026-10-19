@@ -509,15 +509,25 @@
     <section class="workspace" aria-label="選手資料工作區">
       <details class="snapshot-panel">
         <summary>成長比較（JSON 快照）</summary>
-        <p id="snapshotHelp">選擇較早匯出的 JSON，比較同一資料表的選手紀錄；由此版本匯出的紀錄，改名後仍可配對。舊檔只依唯一姓名配對（忽略前後空白），同名或無法確認的紀錄維持未配對，不自動合併。差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
+        <p id="snapshotHelp">選擇較早匯出的 JSON，比較同一資料表的選手紀錄；由此版本匯出的紀錄，改名後仍可配對。舊檔只依唯一姓名配對（忽略前後空白），同名或無法確認的紀錄維持未配對；可使用「配對舊快照選手」確認並儲存配對。差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
         <p id="snapshotIpHelp">IP 輸入與顯示均使用棒球記法：10.2 表示 10 局又 2 個出局數；11.1 − 10.2 = +0.2（2 個出局數），不必輸入分數。</p>
         <div class="snapshot-tools">
           <button type="button" id="loadSnapshot">選擇較早快照</button>
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
+          <button type="button" id="linkSnapshot" disabled>配對舊快照選手</button>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
         </div>
+        <dialog id="linkDialog" aria-labelledby="linkTitle" style="max-width:min(640px,90vw);max-height:85vh;overflow:auto">
+          <h2 id="linkTitle">配對舊快照選手</h2>
+          <p>選擇目前的同一位選手，或保留為獨立的歷史紀錄。每位目前選手只能配對一次。不會變更選手數值。</p>
+          <div id="linkChoices"></div>
+          <p id="linkError" role="alert"></p>
+          <button type="button" id="saveLinks">儲存配對</button>
+          <button type="button" id="cancelLinks">取消</button>
+          <p>配對會隨此模式資料同步至帳戶；請確認頁面顯示「已同步至雲端」。失敗時可重新儲存配對。</p>
+        </dialog>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
@@ -566,6 +576,7 @@
 
   <script src="row-identity.js"></script>
   <script src="snapshot-comparison.js"></script>
+  <script src="legacy-linking.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     // --- Supabase config (safe to commit; the anon key is public by design and
@@ -736,13 +747,15 @@
       document.querySelector("#clearSnapshot").disabled = !snapshot;
       document.querySelector("#snapshotResults").hidden = !snapshot;
       snapshotMetricEl.disabled = !snapshot;
+      document.querySelector("#linkSnapshot").disabled = !snapshot || !Object.values(snapshot.data.sheets).some((rows) => rows.some((p) => !p.rowId));
       snapshotRowsEl.replaceChildren();
       if (!snapshot) {
         snapshotStatusEl.textContent = `尚未選擇 ${modes[state.activeMode].label} 快照。`;
         return;
       }
       const field = snapshotMetricEl.value;
-      const rows = SnapshotComparison.compare(getActivePlayers(), snapshot.data.sheets[state.activeSheet], field);
+      const linked = LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
+      const rows = SnapshotComparison.compare(getActivePlayers(), linked.sheets[state.activeSheet], field);
       const comparable = rows.filter((row) => !row.status).length;
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
       const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";
@@ -768,8 +781,9 @@
       snapshotFileEl.value = "";
       try {
         const data = SnapshotComparison.validate(JSON.parse(await file.text()), mode);
+        const key = await LegacyLinking.key(data);
         if (comparisonLoads[mode] !== generation) return;
-        comparisonSnapshots[mode] = { name: file.name, data };
+        comparisonSnapshots[mode] = { name: file.name, data, key };
         if (state.activeMode === mode) renderSnapshotComparison();
       } catch (error) {
         if (comparisonLoads[mode] !== generation || state.activeMode !== mode) return;
@@ -784,6 +798,60 @@
       comparisonLoads[state.activeMode] = (comparisonLoads[state.activeMode] || 0) + 1;
       delete comparisonSnapshots[state.activeMode];
       renderSnapshotComparison();
+    });
+
+    const linkDialog = document.querySelector("#linkDialog");
+    let linkSession = null;
+    document.querySelector("#linkSnapshot").addEventListener("click", () => {
+      const mode = state.activeMode, snapshot = comparisonSnapshots[mode], current = getActiveModeData();
+      if (!snapshot || !current) return;
+      const selections = LegacyLinking.plan(snapshot.data, current, current.legacyLinks?.[snapshot.key]);
+      linkSession = { mode, snapshot, current, selections };
+      const container = document.querySelector("#linkChoices");
+      container.replaceChildren();
+      document.querySelector("#linkError").textContent = "";
+      for (const sheet of ["hitters", "pitchers"]) snapshot.data.sheets[sheet].forEach((player, index) => {
+        if (player.rowId) return;
+        const label = document.createElement("label"), select = document.createElement("select");
+        label.style.display = "block"; label.style.margin = "12px 0";
+        label.textContent = `${modes[mode].sheets[sheet].label} 第 ${index + 1} 列：${player.name || "（未命名）"} `;
+        select.setAttribute("aria-label", label.textContent);
+        select.style.maxWidth = "100%";
+        select.append(new Option("請選擇", ""), new Option("保留為獨立歷史紀錄（目前無對應選手）", "new"));
+        current.sheets[sheet].forEach((row, i) => select.append(new Option(
+          `第 ${i + 1} 列：${row.name || "（未命名）"}${row.team ? `（${row.team}）` : ""}`, row.rowId)));
+        const selected = selections[sheet][index];
+        if (selected && !current.sheets[sheet].some((p) => p.rowId === selected)) select.append(new Option("已儲存的獨立歷史紀錄／目前已移除的選手", selected));
+        select.value = selected;
+        select.addEventListener("change", () => { selections[sheet][index] = select.value; });
+        label.append(select); container.append(label);
+      });
+      linkDialog.showModal();
+    });
+    document.querySelector("#cancelLinks").addEventListener("click", () => linkDialog.close());
+    linkDialog.addEventListener("close", () => { linkSession = null; });
+    document.querySelector("#saveLinks").addEventListener("click", async () => {
+      if (!linkSession || document.querySelector("#saveLinks").disabled) return;
+      const session = linkSession;
+      const { mode, snapshot, current, selections } = session;
+      try {
+        if (state.activeMode !== mode || comparisonSnapshots[mode] !== snapshot || getActiveModeData() !== current) throw new Error("資料已變更，請取消後重新配對。");
+        const record = LegacyLinking.resolve(snapshot.data, current, selections);
+        current.legacyLinks = { ...current.legacyLinks, [snapshot.key]: record };
+        outputEl.value = JSON.stringify(buildExport(), null, 2);
+        window.clearTimeout(cloudSaveTimer);
+        document.querySelectorAll("#linkChoices select").forEach((select) => { select.disabled = true; });
+        document.querySelector("#saveLinks").disabled = true;
+        setStatus("正在同步配對與目前資料…");
+        const saved = await saveModeToCloud(mode);
+        if (linkSession !== session) return;
+        if (!saved) throw new Error("配對尚未確認儲存。請檢查連線後重試；若已重新載入雲端資料，請取消後重新配對。");
+        renderSnapshotComparison(); linkDialog.close();
+      } catch (error) { document.querySelector("#linkError").textContent = error.message; }
+      finally {
+        document.querySelector("#saveLinks").disabled = false;
+        document.querySelectorAll("#linkChoices select").forEach((select) => { select.disabled = false; });
+      }
     });
 
     function toNumber(raw) {
@@ -930,6 +998,7 @@
       const modeData = {
         schemaVersion: SCHEMA_VERSION,
         mode: modeKey,
+        legacyLinks: LegacyLinking.clean(input.legacyLinks),
         activeSheet: ["hitters", "pitchers"].includes(input.activeSheet) ? input.activeSheet : "hitters",
         sheets: {}
       };
@@ -1009,7 +1078,8 @@
         schemaVersion: SCHEMA_VERSION,
         mode: modeKey,
         activeSheet: modeData.activeSheet,
-        sheets: modeData.sheets
+        sheets: modeData.sheets,
+        legacyLinks: modeData.legacyLinks
       };
       const expected = modeUpdatedAt[modeKey];
 
@@ -1043,6 +1113,7 @@
           modeUpdatedAt[modeKey] = data.updated_at;
         }
         setStatus("已同步至雲端");
+        return true;
       } catch (error) {
         console.warn(error);
         setStatus("雲端儲存失敗，請檢查連線");
@@ -1073,6 +1144,7 @@
         schemaVersion: SCHEMA_VERSION,
         mode: state.activeMode,
         activeSheet: state.activeSheet,
+        legacyLinks: modeData?.legacyLinks,
         sheets: modeData?.sheets ?? { hitters: [], pitchers: [] }
       };
     }
@@ -1095,7 +1167,8 @@
         schemaVersion: SCHEMA_VERSION,
         mode: state.activeMode,
         activeSheet: state.activeSheet,
-        sheets
+        sheets,
+        legacyLinks: modeData?.legacyLinks
       };
     }
 

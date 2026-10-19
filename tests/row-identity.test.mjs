@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
+import linking from "../legacy-linking.js";
 import identity from "../row-identity.js";
 import comparison from "../snapshot-comparison.js";
 
@@ -10,7 +11,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const between = (start, end) => html.slice(html.indexOf(start), html.indexOf(end));
 const id = () => webcrypto.randomUUID();
 function harness(mode = "pawapuro") {
-  const context = vm.createContext({ RowIdentity: identity, SCHEMA_VERSION: 2, console,
+  const context = vm.createContext({ RowIdentity: identity, LegacyLinking: linking, SCHEMA_VERSION: 2, console,
     nameColumn: { field: "name" }, modes: {}, state: { activeMode: mode, activeSheet: "hitters" },
     modeDataCache: {}, modeUpdatedAt: {}, currentUser: { id: "test-user" },
     getColumnValue: (player, column) => player[column.field],
@@ -61,10 +62,15 @@ test("legacy migration is retained in actual cloud-save payload and reload", asy
     h.run(`modeDataCache[state.activeMode] = normalizeModeData(state.activeMode,
       { sheets: { hitters: [{ name: "A" }], pitchers: [{ name: "A" }] } });
       modeUpdatedAt[state.activeMode] = "previous";`);
+    h.run(`modeDataCache[state.activeMode].legacyLinks = { ["a".repeat(64)]: {
+      hitters: [getActiveModeData().sheets.hitters[0].rowId], pitchers: [getActiveModeData().sheets.pitchers[0].rowId] } };`);
     await h.run("saveModeToCloud(state.activeMode)");
+    assert.deepEqual(JSON.parse(JSON.stringify(payload.legacyLinks)),
+      JSON.parse(h.run("JSON.stringify(getActiveModeData().legacyLinks)")));
     assert.ok(identity.valid(payload.sheets.hitters[0].rowId));
     assert.notEqual(payload.sheets.hitters[0].rowId, payload.sheets.pitchers[0].rowId);
     h.context.saved = JSON.parse(JSON.stringify(payload));
+    assert.equal(h.run('normalizeModeData(state.activeMode, saved).legacyLinks["a".repeat(64)].hitters[0]'), payload.sheets.hitters[0].rowId);
     assert.equal(h.run("normalizeModeData(state.activeMode, saved).sheets.hitters[0].rowId"),
       payload.sheets.hitters[0].rowId);
   }
