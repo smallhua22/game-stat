@@ -516,8 +516,11 @@
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
+          <button type="button" id="downloadComparison" disabled>下載比較 CSV</button>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
         </div>
+        <p>CSV 僅含目前模式、資料表與比較欄位，含未同步修改；不是備份。IP 為棒球記法，試算表請以文字匯入。匯出不會上傳資料。</p>
+        <p id="comparisonDownloadStatus" role="status" aria-live="polite"></p>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
@@ -734,6 +737,8 @@
       snapshotMetricEl.value = comparisonMetrics[scope] || (state.activeSheet === "hitters" ? "hr" : "era");
       const snapshot = comparisonSnapshots[state.activeMode];
       document.querySelector("#clearSnapshot").disabled = !snapshot;
+      document.querySelector("#downloadComparison").disabled = !snapshot;
+      document.querySelector("#comparisonDownloadStatus").textContent = "";
       document.querySelector("#snapshotResults").hidden = !snapshot;
       snapshotMetricEl.disabled = !snapshot;
       snapshotRowsEl.replaceChildren();
@@ -784,6 +789,31 @@
       comparisonLoads[state.activeMode] = (comparisonLoads[state.activeMode] || 0) + 1;
       delete comparisonSnapshots[state.activeMode];
       renderSnapshotComparison();
+    });
+
+    document.querySelector("#downloadComparison").addEventListener("click", () => {
+      const snapshot = comparisonSnapshots[state.activeMode];
+      if (!snapshot) return;
+      let url, link;
+      try {
+        renderSnapshotComparison(); // Include latest edits and the same matching as the table.
+        const rows = Array.from(snapshotRowsEl.children, (tr) => Array.from(tr.children, (td) => td.textContent));
+        const now = new Date().toISOString();
+        const csv = SnapshotComparison.csv(rows, { generatedAt: now, mode: state.activeMode,
+          sheet: state.activeSheet, metric: snapshotMetricEl.value, filename: snapshot.name,
+          exportedAt: typeof snapshot.data.exportedAt === "string" ? snapshot.data.exportedAt : "" });
+        url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        link = document.createElement("a");
+        link.href = url;
+        link.download = `game-stat-${state.activeMode}-${state.activeSheet}-${snapshotMetricEl.value}-${now.replace(/[:.]/g, "-")}.csv`;
+        document.body.append(link); link.click();
+        document.querySelector("#comparisonDownloadStatus").textContent = "已開始下載比較 CSV；請確認瀏覽器下載結果。";
+      } catch (error) {
+        document.querySelector("#comparisonDownloadStatus").textContent = "無法下載比較 CSV，請重試。";
+      } finally {
+        link?.remove();
+        if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
     });
 
     function toNumber(raw) {
