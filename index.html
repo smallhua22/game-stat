@@ -516,11 +516,8 @@
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
-          <button type="button" id="downloadComparison" disabled>下載比較 CSV</button>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
         </div>
-        <p>CSV 僅含目前模式、資料表與比較欄位，含未同步修改；不是備份。IP 為棒球記法，試算表請以文字匯入。匯出不會上傳資料。</p>
-        <p id="comparisonDownloadStatus" role="status" aria-live="polite"></p>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
@@ -529,6 +526,9 @@
             <tbody id="snapshotRows"></tbody>
           </table>
         </div>
+        <button type="button" id="downloadComparison" disabled>下載比較 CSV</button>
+        <p>CSV 僅含目前模式、資料表與比較欄位，含未同步修改；不是備份。IP 為棒球記法，試算表請以文字匯入。匯出不會上傳資料。</p>
+        <p id="comparisonDownloadStatus" role="status" aria-live="polite"></p>
       </details>
       <div class="sheet">
         <div class="sheet-header">
@@ -791,6 +791,22 @@
       renderSnapshotComparison();
     });
 
+    function toNumber(raw) {
+      const value = parseFloat(raw);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    // IP is stored in baseball outs notation (e.g. "11.1" = 11⅓, "4.2" = 4⅔).
+    function parseInnings(raw) {
+      const value = parseFloat(raw);
+      if (!Number.isFinite(value)) return 0;
+      const whole = Math.trunc(value);
+      const tenths = Math.round((value - whole) * 10);
+      if (tenths === 1) return whole + 1 / 3;
+      if (tenths === 2) return whole + 2 / 3;
+      return value;
+    }
+
     document.querySelector("#downloadComparison").addEventListener("click", () => {
       const snapshot = comparisonSnapshots[state.activeMode];
       if (!snapshot) return;
@@ -815,22 +831,6 @@
         if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     });
-
-    function toNumber(raw) {
-      const value = parseFloat(raw);
-      return Number.isFinite(value) ? value : 0;
-    }
-
-    // IP is stored in baseball outs notation (e.g. "11.1" = 11⅓, "4.2" = 4⅔).
-    function parseInnings(raw) {
-      const value = parseFloat(raw);
-      if (!Number.isFinite(value)) return 0;
-      const whole = Math.trunc(value);
-      const tenths = Math.round((value - whole) * 10);
-      if (tenths === 1) return whole + 1 / 3;
-      if (tenths === 2) return whole + 2 / 3;
-      return value;
-    }
 
     function roundStat(value, digits = 1) {
       return Number.isFinite(value) ? String(Number(value.toFixed(digits))) : "";
