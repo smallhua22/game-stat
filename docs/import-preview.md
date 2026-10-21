@@ -14,8 +14,8 @@ are required; malformed rows and invalid identities are rejected before preview.
 Older exports without a mode use the mode selected when the file was chosen.
 
 Loading into the editor is not proof of cloud persistence: check the subsequent cloud
-status. A save error remains visible; keep the source file and retry importing it.
-Changing accounts or modes while a file is reading or awaiting confirmation requires
+status. If a save error appears, keep the source file and retry importing it.
+A detected account or mode change while a file is reading or awaiting confirmation requires
 selecting the file again. Newer file selections supersede unfinished reads. Filenames
 are displayed as text, never HTML. This does not add named snapshots or change storage.
 

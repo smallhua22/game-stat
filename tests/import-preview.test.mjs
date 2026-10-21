@@ -121,3 +121,21 @@ test('stale older save cannot reload over a confirmed import or change its queue
   assert.equal(ctx.modeDataCache.pawapuro.sheets.hitters[0].name, 'later edit');
   assert.equal(ctx.modeUpdatedAt.pawapuro, 'imported');
 });
+test('choosing cloud reload invalidates older queued autosaves', async () => {
+  let release, writes = 0;
+  const ctx = vm.createContext({ currentUser: { id: 'owner' }, modeUpdatedAt: { pawapuro: 'before' }, SCHEMA_VERSION: 2,
+    modeDataCache: { pawapuro: { sheets: { hitters: [{ name: 'local A' }] } } },
+    setStatus() {}, console: { warn() {} },
+    onStaleConflict() { ctx.modeDataCache.pawapuro = { sheets: { hitters: [{ name: 'cloud B' }] } }; ctx.modeUpdatedAt.pawapuro = 'cloud B version'; },
+    supabaseClient: { from() {
+      const q = { update() { writes++; return q; }, eq() { return q; }, select() { return q; },
+        maybeSingle() { return new Promise((resolve) => { release = resolve; }); } };
+      return q;
+    } } });
+  vm.runInContext(html.slice(html.indexOf('    async function saveModeToCloud('), html.indexOf('    async function onStaleConflict(')), ctx);
+  const first = ctx.saveModeToCloud('pawapuro'); await new Promise(setImmediate);
+  const second = ctx.saveModeToCloud('pawapuro'); release({ data: null });
+  await Promise.all([first, second]);
+  assert.equal(writes, 1);
+  assert.equal(ctx.modeDataCache.pawapuro.sheets.hitters[0].name, 'cloud B');
+});
