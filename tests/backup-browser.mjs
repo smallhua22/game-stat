@@ -84,6 +84,8 @@ try {
     await page.locator('#rows [data-field="ip"]').fill('99.0');
     await page.locator('#jsonFile').setInputFiles({ name: 'restore.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
     await page.waitForFunction(() => document.querySelector('#jsonFile').value === '');
+    // Compatible with the explicit import preview in PR #9, while retaining legacy import coverage.
+    if (await page.locator('#importPreview').isVisible()) await page.locator('#confirmImport').click();
     const restored = await page.evaluate(() => buildStorageExport());
     assert.deepEqual(restored.sheets, backup.sheets);
     assert.equal(restored.activeSheet, backup.activeSheet);
