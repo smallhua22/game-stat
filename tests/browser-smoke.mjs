@@ -63,6 +63,7 @@ try {
     await page.waitForFunction((mode) => JSON.parse(document.querySelector('#outputText').value).mode === mode, mode);
     for (const sheet of ['hitters', 'pitchers']) {
       await page.locator(`#${sheet}Tab`).click();
+      assert.equal(await page.locator('#playerSearch').inputValue(), '');
       const original = (await output()).sheets[sheet][0].rowId;
       assert.match(original, /^[a-f0-9-]{36}$/);
       await page.locator('#rows tr').first().getByRole('button', { name: '複製', exact: true }).click();
@@ -75,8 +76,46 @@ try {
       await page.locator('#addPlayer').click();
       rows = (await output()).sheets[sheet];
       assert.equal(new Set(rows.map((row) => row.rowId)).size, 3);
+      // Search is a view, and actions must retain nonzero original indices.
+      await page.waitForTimeout(950); // Let the preceding edit's debounce finish.
+      const writes = await page.evaluate(() => window.qaWrites.length);
+      const full = await output();
+      await page.locator('#playerSearch').fill(' renamed ');
+      assert.equal(await page.locator('#rows tr:visible').count(), 1);
+      assert.match(await page.locator('#playerSearchStatus').innerText(), /1 \/ 3/);
+      assert.equal(await page.locator('#rows tr:visible [data-move="up"]').isDisabled(), true);
+      assert.deepEqual(await output(), full);
+      await page.waitForTimeout(950);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+      const visibleName = page.locator('#rows tr:visible [data-field="name"]');
+      await visibleName.fill('Renamed edited');
+      assert.equal((await output()).sheets[sheet][1].rowId, original);
+      assert.equal((await output()).sheets[sheet][0].name, full.sheets[sheet][0].name);
+      await visibleName.fill('Renamed');
+      await page.locator('#rows tr:visible').getByRole('button', { name: '複製', exact: true }).click();
+      assert.equal(await page.locator('#rows tr:visible').count(), 2);
+      await page.locator('#rows tr:visible').last().getByRole('button', { name: '刪除', exact: true }).click();
+      assert.deepEqual(await output(), full);
+      await page.locator('#playerSearch').fill('no matching player');
+      assert.equal(await page.locator('#rows tr:visible').count(), 0);
+      assert.match(await page.locator('#playerSearchStatus').innerText(), /沒有符合/);
+      await page.locator('#playerSearch').press('Escape');
+      assert.equal(await page.locator('#rows tr:visible').count(), 3);
+      await page.locator('#playerSearch').fill('Renamed');
+      await page.locator('#clearPlayerSearch').click();
+      assert.equal(await page.locator('#playerSearch').inputValue(), '');
+      assert.equal(await page.locator('#rows tr').first().locator('[data-move="up"]').isDisabled(), true);
+      await page.locator('#playerSearch').fill('no matching player');
+      await page.locator('#addPlayer').click();
+      assert.equal(await page.locator('#playerSearch').inputValue(), '');
+      await page.locator('#rows tr').last().getByRole('button', { name: '刪除', exact: true }).click();
+      await page.locator('#playerSearch').fill('Renamed');
+      await page.screenshot({ path: `browser-artifacts/search-${mode}-${sheet}.png`, fullPage: true });
+      await page.locator('#playerSearch').fill('pending reset');
+
     }
     await page.locator('#hittersTab').click();
+    assert.equal(await page.locator('#playerSearch').inputValue(), '');
     const exported = await output();
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#downloadJson').click();

@@ -15,7 +15,7 @@ function harness(mode = "pawapuro") {
     modeDataCache: {}, modeUpdatedAt: {}, currentUser: { id: "test-user" },
     getColumnValue: (player, column) => player[column.field],
     getVisibleColumns: () => [{ field: "name" }], render() {}, setStatus() {},
-    rowsEl: { querySelector: () => null } });
+    playerSearchEl: { value: "" }, rowsEl: { querySelector: () => null } });
   vm.runInContext(between("    function makeSheet(", "    async function loadModeSeed("), context);
   const run = (code) => vm.runInContext(code, context);
   run(`for (const mode of ["pawapuro", "prospi"]) modes[mode] = { sheets: {
