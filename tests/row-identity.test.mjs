@@ -149,3 +149,43 @@ test("real import handler rejects damaged identities without changing data or sa
     assert.equal(renders, 0);
   }
 });
+
+test("real import rejects conflicting saved links after a deleted target gains an unrelated namesake", async () => {
+  for (const mode of ["pawapuro", "prospi"]) {
+    const h = harness(mode), target = id(), unrelated = id(), pitcher = id();
+    const snapshot = { mode, sheets: { hitters: [{ name: "Alex", hr: "1" }], pitchers: [{ name: "P" }] } };
+    const key = await linking.key(snapshot);
+    h.context.input = { mode, sheets: { hitters: [{ name: "Alex", rowId: target, hr: "8" }],
+      pitchers: [{ name: "P", rowId: pitcher }] }, legacyLinks: { [key]: { hitters: [target], pitchers: [pitcher] } } };
+    h.run("modeDataCache[state.activeMode] = normalizeModeData(state.activeMode, input)");
+    const previous = h.run("getActiveModeData()");
+    assert.equal(comparison.compare(previous.sheets.hitters,
+      linking.apply(snapshot, previous.legacyLinks[key]).sheets.hitters, "hr")[0].delta, 7);
+    previous.sheets.hitters = [{ name: "Alex", rowId: unrelated, hr: "9" }]; // Delete the linked player.
+    const assertProtected = () => {
+      assert.equal(linking.plan(snapshot, previous, previous.legacyLinks[key]).hitters[0], target);
+      assert.ok(comparison.compare(previous.sheets.hitters,
+        linking.apply(snapshot, previous.legacyLinks[key]).sheets.hitters, "hr").every((r) => r.delta === null));
+    };
+    assertProtected();
+    let status, saves = 0, renders = 0;
+    Object.assign(h.context, { jsonFileEl: { value: "selected.json" },
+      FileReader: class {
+        addEventListener(_event, handler) { this.loaded = handler; }
+        readAsText(file) { this.result = JSON.stringify(file); this.loaded(); }
+      }, console: { warn() {} }, setStatus(message) { status = message; },
+      render() { renders++; }, saveModeToCloud() { saves++; } });
+    vm.runInContext(between("    function importJsonFile(", "    function updateComputedCells("), h.context);
+    for (const bad of [target, "broken"]) {
+      h.context.file = JSON.parse(JSON.stringify(previous));
+      h.context.file.legacyLinks[key].pitchers[0] = bad;
+      h.run("importJsonFile(file)");
+      assert.match(status, /配對資訊.*原有資料未變更/);
+      assert.equal(h.run("getActiveModeData()"), previous);
+      assert.equal(h.context.jsonFileEl.value, "");
+      assertProtected();
+    }
+    assert.equal(saves, 0);
+    assert.equal(renders, 0);
+  }
+});

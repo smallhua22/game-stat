@@ -44,14 +44,12 @@ test('both modes: explicit resolutions survive renames, serialization and delete
   }
 });
 
-test('duplicate choices and collision with identified rows are rejected; malformed saved records ignored', () => {
+test('duplicate choices and collision with identified rows are rejected', () => {
   const data = fixture('pawapuro'), target = id(), current = { sheets: { hitters: [], pitchers: [] } };
   const selected = { hitters: [target, target, 'new'], pitchers: ['new'] };
   assert.throws(() => linking.resolve(data, current, selected), /重複/);
   data.sheets.hitters[0].rowId = target;
   assert.throws(() => linking.resolve(data, current, selected), /重複/);
-  assert.deepEqual(linking.clean({ bad: {}, ['a'.repeat(64)]: { hitters: [target], pitchers: [target] } }), {});
-  assert.deepEqual(linking.clean(null), {});
 });
 
 test('incompatible saved metadata is ignored before it can break comparison', () => {
@@ -61,4 +59,17 @@ test('incompatible saved metadata is ignored before it can break comparison', ()
   assert.equal(linking.apply(data, record), data);
   assert.equal(linking.plan(data, current, record).hitters[1], '');
   assert.equal(linking.apply(data, { hitters: [], pitchers: [] }), data);
+});
+
+test('malformed imported link metadata rejects the whole collection', () => {
+  const target = id(), hash = 'a'.repeat(64), valid = { hitters: [target], pitchers: [id()] };
+  assert.deepEqual(linking.clean(), {}); // Older exports omit the optional metadata.
+  assert.deepEqual(linking.clean({ [hash]: valid }), { [hash]: valid });
+  for (const records of [null, [], '', 42, false,
+    { bad: valid }, { [hash]: null }, { [hash]: { hitters: [], pitchers: 'bad' } },
+    ...['broken', null, 42, target.toUpperCase(), target].map((bad) => ({
+      [hash]: valid, ['b'.repeat(64)]: { hitters: [target], pitchers: [bad] }
+    }))]) {
+    assert.throws(() => linking.clean(records), /配對資訊.*損毀或重複/);
+  }
 });

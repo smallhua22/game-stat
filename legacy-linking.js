@@ -8,18 +8,21 @@ const LegacyLinking = (() => {
     const bytes = new TextEncoder().encode(JSON.stringify(canonical({ mode: data.mode, sheets: data.sheets })));
     return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  function clean(records = {}) {
-    return Object.fromEntries(Object.entries(records || {}).filter(([hash, record]) => {
-      if (!/^[a-f0-9]{64}$/.test(hash) || !sheets.every((s) => Array.isArray(record?.[s]))) return false;
-      const ids = sheets.flatMap((s) => record[s]);
-      return ids.every(identity.valid) && new Set(ids).size === ids.length;
-    }));
-  }
-  function compatible(data, record) {
-    if (!record || !sheets.every((s) => Array.isArray(record[s]) && record[s].length === data.sheets[s].length &&
-      data.sheets[s].every((p, i) => !p.rowId || p.rowId === record[s][i]))) return false;
+  function validRecord(record) {
+    if (!sheets.every((s) => Array.isArray(record?.[s]))) return false;
     const ids = sheets.flatMap((s) => record[s]);
     return ids.every(identity.valid) && new Set(ids).size === ids.length;
+  }
+  function clean(records = {}) {
+    if (!records || typeof records !== "object" || Array.isArray(records) ||
+      !Object.entries(records).every(([hash, record]) => /^[a-f0-9]{64}$/.test(hash) && validRecord(record))) {
+      throw new Error("檔案中的舊快照配對資訊損毀或重複，無法安全載入。請改用應用程式匯出的完整檔案；原有資料未變更。");
+    }
+    return Object.fromEntries(Object.entries(records));
+  }
+  function compatible(data, record) {
+    return validRecord(record) && sheets.every((s) => record[s].length === data.sheets[s].length &&
+      data.sheets[s].every((p, i) => !p.rowId || p.rowId === record[s][i]));
   }
   function plan(data, current, saved) {
     if (!compatible(data, saved)) saved = null;

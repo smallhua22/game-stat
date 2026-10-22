@@ -15,6 +15,8 @@ including after renames. Changed stats or row order describe different content.
 Deleted targets remain unmatched rather than being reassigned by name. You can reopen
 the chooser to correct a saved match. Normal JSON export/import retains the choices;
 replacing mode data with an older file without them removes them, as does resetting data.
+Imports with malformed or duplicate saved match identities are rejected in full; current
+data and saved matches stay unchanged. Older files may omit the match metadata.
 This is not saved snapshot storage: select the historical file again after refresh.
 No new database table, access policy or production data migration is introduced.
 
@@ -29,5 +31,6 @@ No new database table, access policy or production data migration is introduced.
 表示儲存成功。若衝突後重新載入資料，請重新開啟配對視窗。相同快照內容換檔名或
 匯出時間仍沿用配對；數值或列順序變更則視為不同內容。改名不影響配對，已刪除的
 目前選手不會自動改配別人。可重新開啟視窗修正配對。JSON 匯出／匯入保留配對；
-匯入不含配對的舊檔或重設資料會移除配對。這不是具名快照儲存，重新整理後仍需
-再次選取歷史檔案。不新增資料表或存取權限。
+匯入不含配對的舊檔或重設資料會移除配對。若匯入檔的已儲存配對識別資訊損毀或
+重複，整份匯入會被拒絕，目前資料與配對不變。舊檔可省略配對資訊。
+這不是具名快照儲存，重新整理後仍需再次選取歷史檔案。不新增資料表或存取權限。
