@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 const root = new URL('../', import.meta.url);
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
-  if (!['/', '/index.html', '/row-identity.js', '/snapshot-comparison.js'].includes(path)) {
+  if (!['/', '/index.html', '/row-identity.js', '/snapshot-comparison.js', '/legacy-linking.js'].includes(path)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', path.endsWith('.js') ? 'text/javascript' : 'text/html');
@@ -16,7 +16,7 @@ const server = createServer(async (request, response) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 function mockBackend() {
-  const tables = Object.fromEntries(['pawapuro', 'prospi'].map((mode) => [mode,
+  const tables = JSON.parse(localStorage.getItem('qaTables') || 'null') || Object.fromEntries(['pawapuro', 'prospi'].map((mode) => [mode,
     { schemaVersion: 2, mode, sheets: { hitters: [{ name: 'A', hr: '3' }],
       pitchers: [{ name: 'P', ip: '10.2', era: '3' }] } }]));
   window.qaWrites = [];
@@ -29,7 +29,11 @@ function mockBackend() {
       update(value) { payload = value; return query; },
       upsert(value) { mode = value.table_id; payload = value; return query; },
       async maybeSingle() {
-        if (payload) { tables[mode] = structuredClone(payload.data); window.qaWrites.push(mode); }
+        if (payload) {
+          if (window.qaFail) return { data: null, error: new Error('simulated offline') };
+          tables[mode] = structuredClone(payload.data); window.qaWrites.push(mode);
+          localStorage.setItem('qaTables', JSON.stringify(tables));
+        }
         return { data: { data: structuredClone(tables[mode]), updated_at: 'qa-version' }, error: null };
       } };
     return query;
@@ -38,7 +42,7 @@ function mockBackend() {
 let browser, page;
 await mkdir('browser-artifacts', { recursive: true });
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.QA_CHROMIUM });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -132,6 +136,44 @@ try {
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('newest.json'));
     await page.evaluate(async () => { await window.releaseSlow(); window.restoreFileText(); });
     assert.match(await page.locator('#snapshotStatus').innerText(), /newest.json/);
+    const historical = { schemaVersion: 2, mode, sheets: {
+      hitters: [{ name: '<b>Old</b>', hr: '1' }, { name: '<b>Old</b>', hr: '2' }],
+      pitchers: [{ name: 'Earlier P', ip: '10.2' }] } };
+    await upload('#snapshotFile', historical, 'link-me.json');
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('link-me.json'));
+    await page.locator('#linkSnapshot').click();
+    await page.locator('#cancelLinks').click();
+    assert.equal(await page.locator('#linkDialog').isVisible(), false);
+    await page.locator('#linkSnapshot').click();
+    assert.equal(await page.locator('#linkChoices b').count(), 0); // Names are text, never markup.
+    const choices = page.locator('#linkChoices select');
+    await choices.nth(0).selectOption(exported.sheets.hitters[1].rowId);
+    await choices.nth(1).selectOption(exported.sheets.hitters[1].rowId);
+    await choices.nth(2).selectOption(exported.sheets.pitchers[1].rowId);
+    await page.locator('#saveLinks').click();
+    assert.match(await page.locator('#linkError').innerText(), /重複/);
+    await choices.nth(1).selectOption('new');
+    await page.evaluate(() => { window.qaFail = true; });
+    await page.locator('#saveLinks').click();
+    await page.waitForFunction(() => document.querySelector('#linkError').textContent.includes('尚未確認儲存'));
+    assert.equal(await page.locator('#linkDialog').isVisible(), true);
+    await page.evaluate(() => { window.qaFail = false; });
+    await page.locator('#saveLinks').click();
+    await page.locator('#linkDialog').waitFor({ state: 'hidden' });
+    assert.match(await page.locator('#snapshotRows tr').nth(1).innerText(), /\+2\s+可比較/);
+    const savedLinks = await page.evaluate((mode) => JSON.parse(localStorage.getItem('qaTables'))[mode].legacyLinks, mode);
+    assert.equal(Object.keys(savedLinks).length, 1);
+    await page.reload();
+    await page.locator('main.app').waitFor({ state: 'visible' });
+    await page.locator('.snapshot-panel summary').click();
+    await upload('#snapshotFile', historical, 'same-data-new-name.json');
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('same-data-new-name.json'));
+    assert.match(await page.locator('#snapshotRows tr').nth(1).innerText(), /\+2\s+可比較/);
+    await page.locator('#linkSnapshot').click();
+    assert.equal(await choices.nth(0).inputValue(), exported.sheets.hitters[1].rowId);
+    assert.equal(await choices.nth(1).inputValue(), Object.values(savedLinks)[0].hitters[1]);
+    await page.keyboard.press('Escape');
+    await page.locator('#linkDialog').waitFor({ state: 'hidden' });
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);

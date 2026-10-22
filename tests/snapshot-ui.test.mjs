@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import linking from "../legacy-linking.js";
+import { webcrypto } from "node:crypto";
 import comparison from "../snapshot-comparison.js";
 
 // Run the real comparison handlers/rendering with a minimal in-memory DOM.
@@ -26,6 +28,7 @@ function harness() {
   const context = vm.createContext({ document: { querySelector: el, createElement: node }, state,
     rowsEl: el("#rows"), outputEl: el("#output"), updateComputedCells() {}, saveState() {},
     buildExport: () => ({ sheets: players }),
+    LegacyLinking: linking, crypto: webcrypto, TextEncoder, getActiveModeData: () => ({ sheets: players }),
     SnapshotComparison: comparison, modes: { pawapuro: { label: "Pawapuro" }, prospi: { label: "Prospi" } },
     Option: function (label, value) { return { label, value }; },
     getSheetConfig: () => ({ columns: ["hr", "era", "ip"].map((field) => ({ field, label: field })) }),
