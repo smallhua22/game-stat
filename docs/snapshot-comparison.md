@@ -34,7 +34,8 @@ for ambiguous/renamed historical rows and reusable historical linking decisions 
 Importing an ID-less file as the current table creates fresh identities, not links to the replaced table.
 Comparisons do not calculate rate statistics for the intervening period.
 Missing, blank, or invalid values show `—`, never zero. Existing JSON exports contain only visible columns;
-show a metric before downloading a snapshot if you want to compare it later. Comparison itself is independent
+show a metric before downloading a snapshot if you want to compare it later, or use the
+[full-data backup](full-data-backup.md) to retain hidden stored fields. Comparison itself is independent
 of current column visibility. Raw numeric fields and AVG/OBP/SLG are supported; letter grades, free text,
 and computed columns are excluded.
 
@@ -82,7 +83,8 @@ IP 輸入與顯示均使用棒球記法：`10.2` 表示 10 局又 2 個出局數
 連結決定的永久保存將另行實作。將無 ID 檔案匯入成目前資料表會建立新身分，並非連結被替換的資料。
 比較不推算期間內的比率成績。
 缺少、空白或無效的數值顯示 `—`，不當作零。原有 JSON 匯出只包含已顯示的欄位；
-若要日後比較某欄位，請在下載快照前將它顯示。成長比較本身不受目前欄位顯示設定影響。
+若要日後比較某欄位，請在下載快照前將它顯示，或使用[完整備份](full-data-backup.md)保留隱藏的儲存欄位。
+成長比較本身不受目前欄位顯示設定影響。
 目前支援原始數值欄位及 AVG／OBP／SLG，不包含字母評價、自由文字和計算欄位。
 
 ### 測試

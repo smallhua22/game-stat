@@ -495,6 +495,7 @@
         <button type="button" id="addPlayer" class="primary">新增選手</button>
         <button type="button" id="copyJson">複製 JSON</button>
         <button type="button" id="downloadJson">下載 JSON</button>
+        <button type="button" id="downloadBackup" aria-describedby="backupHelp">下載完整備份</button>
         <button type="button" id="importJson">匯入 JSON</button>
         <input type="file" id="jsonFile" accept="application/json,.json" hidden>
         <button type="button" id="resetSample">重設範例</button>
@@ -568,6 +569,7 @@
             <button type="button" id="copyJsonSide">複製</button>
           </div>
         </div>
+        <p id="backupHelp">一般 JSON 只含可見欄位；完整備份包含目前模式的打者、投手與隱藏欄位（含尚未同步的修改）。不含另一模式或顯示設定。可透過「匯入 JSON」還原，會取代該模式資料。</p>
         <textarea id="outputText" spellcheck="false" readonly></textarea>
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </aside>
@@ -1424,6 +1426,34 @@
       URL.revokeObjectURL(link.href);
       setStatus(`已下載 game-stat-${state.activeMode}.json`);
     }
+
+    function buildBackup() {
+      if (!getActiveModeData()) throw new Error("Mode data has not loaded");
+      return { ...buildStorageExport(), exportedAt: new Date().toISOString() };
+    }
+
+    function downloadBackup() {
+      let url;
+      const link = document.createElement("a");
+      try {
+        const backup = buildBackup();
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+        url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = `game-stat-${backup.mode}-backup-${backup.exportedAt.replace(/[:.]/g, "-")}.json`;
+        document.body.append(link);
+        link.click();
+        setStatus("已開始下載完整備份；請確認瀏覽器已儲存檔案。雲端資料不受影響。");
+      } catch (error) {
+        console.warn(error);
+        setStatus("無法建立備份，請確認資料已載入後重試。未變更目前資料。");
+      } finally {
+        link.remove();
+        if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    }
+
+    document.querySelector("#downloadBackup").addEventListener("click", downloadBackup);
 
     function importJsonFile(file) {
       if (!file) return;
