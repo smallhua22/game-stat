@@ -542,6 +542,13 @@
             <span class="count" id="playerCount"></span>
           </div>
         </div>
+        <div class="sheet-tools" style="padding: 0.75rem 1rem; flex-wrap: wrap;">
+          <label for="playerSearch">搜尋選手姓名</label>
+          <input type="search" id="playerSearch" style="width: min(100%, 18rem);" placeholder="輸入部分姓名" aria-describedby="playerSearchHelp playerSearchStatus">
+          <button type="button" id="clearPlayerSearch" disabled>清除搜尋</button>
+          <span id="playerSearchStatus" role="status" aria-live="polite"></span>
+        </div>
+        <p id="playerSearchHelp" style="padding: 0 1rem;">僅篩選目前資料表；不影響匯出、備份或成長比較。搜尋時暫停上下移動，清除搜尋後可調整順序。</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -1217,7 +1224,47 @@
       headerRowEl.append(actionsTh);
     }
 
+    const playerSearchEl = document.querySelector("#playerSearch");
+    const clearPlayerSearchEl = document.querySelector("#clearPlayerSearch");
+    let playerSearchScope = "";
+    let playerSearchData = null;
+
+    function applyPlayerSearch() {
+      const query = playerSearchEl.value.trim().toLowerCase();
+      const players = getActivePlayers();
+      let shown = 0;
+      [...rowsEl.children].forEach((tr, index) => {
+        tr.hidden = !String(players[index]?.name || "").toLowerCase().includes(query);
+        if (!tr.hidden) shown++;
+        tr.querySelectorAll("button[data-move]").forEach((button) => {
+          button.disabled = Boolean(query) || (button.dataset.move === "up" ? index === 0 : index === players.length - 1);
+        });
+      });
+      clearPlayerSearchEl.disabled = !playerSearchEl.value;
+      document.querySelector("#playerSearchStatus").textContent = query
+        ? `顯示 ${shown} / ${players.length} 位選手${shown ? "" : "；沒有符合的姓名，請清除或修改搜尋。"}` : "";
+    }
+
+    function clearPlayerSearch() {
+      playerSearchEl.value = "";
+      applyPlayerSearch();
+    }
+
+    playerSearchEl.addEventListener("input", applyPlayerSearch);
+    playerSearchEl.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); clearPlayerSearch(); }
+    });
+    clearPlayerSearchEl.addEventListener("click", () => { clearPlayerSearch(); playerSearchEl.focus(); });
+    // Recheck a renamed player after editing finishes, never in the middle of typing.
+    rowsEl.addEventListener("change", (event) => {
+      if (event.target.dataset.field === "name") applyPlayerSearch();
+    });
+
     function render() {
+      const searchScope = `${state.activeMode}:${state.activeSheet}`;
+      if (playerSearchScope !== searchScope || playerSearchData !== getActiveModeData()) playerSearchEl.value = "";
+      playerSearchData = getActiveModeData();
+      playerSearchScope = searchScope;
       const sheet = getSheetConfig();
       const players = getActivePlayers();
       const visibleColumns = getVisibleColumns(sheet, players);
@@ -1256,6 +1303,8 @@
           makeActionButton("+", "複製", () => duplicatePlayer(index), false),
           makeActionButton("×", "刪除", () => removePlayer(index), players.length === 1, "danger")
         );
+        actions.children[0].dataset.move = "up";
+        actions.children[1].dataset.move = "down";
         actionTd.append(actions);
         tr.append(actionTd);
         rowsEl.append(tr);
@@ -1270,6 +1319,7 @@
       const widthColumns = metadataFolded ? visibleColumns.filter((column) => !column.metadata) : visibleColumns;
       tableWrapEl.style.setProperty("--table-min-width", `${getTableMinWidth(widthColumns)}px`);
       applyMetadataFold();
+      applyPlayerSearch();
       renderSnapshotComparison();
       saveState();
     }
@@ -1287,6 +1337,7 @@
     }
 
     function addPlayer() {
+      playerSearchEl.value = "";
       getActivePlayers().push(getSheetConfig().empty());
       render();
       rowsEl.querySelector("tr:last-child input")?.focus();
