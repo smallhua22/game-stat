@@ -58,6 +58,37 @@ try {
     await page.locator(selector).setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)) });
     await page.waitForFunction((selector) => document.querySelector(selector).value === '', selector);
   };
+  // Column presets are local view changes, not roster writes.
+  for (const mode of ['pawapuro', 'prospi']) {
+    await page.locator('#modeSelect').selectOption(mode);
+    await page.waitForFunction((mode) => JSON.parse(document.querySelector('#outputText').value).mode === mode, mode);
+    for (const sheet of ['hitters', 'pitchers']) {
+      await page.locator(`#${sheet}Tab`).click();
+      await page.waitForTimeout(1000); // Let the existing mode/sheet save settle.
+      const before = await page.evaluate(() => JSON.stringify(buildStorageExport()));
+      const writes = await page.evaluate(() => window.qaWrites.length);
+      await page.locator('#toggleColumns').click();
+      await page.locator('#showAllColumns').click();
+      assert.equal(await page.locator('#columnChecklist input:not(:checked)').count(), 0);
+      const allFields = Object.keys((await output()).sheets[sheet][0]);
+      assert.ok(allFields.includes('bb'), 'empty inputs become available for entry/export');
+      await page.locator('#autoColumns').click();
+      assert.ok(await page.locator('#columnChecklist input:not(:checked)').count() > 0);
+      assert.ok(!Object.keys((await output()).sheets[sheet][0]).includes('bb'));
+      assert.equal(await page.evaluate(() => JSON.stringify(buildStorageExport())), before);
+      await page.waitForTimeout(1000);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+      await page.screenshot({ path: `browser-artifacts/columns-${mode}-${sheet}.png`, fullPage: true });
+      await page.locator('#showAllColumns').click();
+      await page.reload();
+      await page.locator('main.app').waitFor({ state: 'visible' });
+      await page.locator('#toggleColumns').click();
+      assert.equal(await page.locator('#columnChecklist input:not(:checked)').count(), 0);
+      await page.locator('#autoColumns').click();
+      await page.locator('#toggleColumns').click();
+    }
+  }
+  await page.locator('.snapshot-panel summary').click();
   for (const mode of ['pawapuro', 'prospi']) {
     await page.locator('#modeSelect').selectOption(mode);
     await page.waitForFunction((mode) => JSON.parse(document.querySelector('#outputText').value).mode === mode, mode);
