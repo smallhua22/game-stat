@@ -75,6 +75,9 @@ try {
       await page.locator('#autoColumns').click();
       assert.ok(await page.locator('#columnChecklist input:not(:checked)').count() > 0);
       assert.ok(!Object.keys((await output()).sheets[sheet][0]).includes('bb'));
+      await page.locator('#columnChecklist input[data-field="bb"]').check();
+      assert.ok(Object.keys((await output()).sheets[sheet][0]).includes('bb'));
+      await page.locator('#autoColumns').click();
       assert.equal(await page.evaluate(() => JSON.stringify(buildStorageExport())), before);
       await page.waitForTimeout(1000);
       assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
@@ -82,6 +85,7 @@ try {
       await page.locator('#showAllColumns').click();
       await page.reload();
       await page.locator('main.app').waitFor({ state: 'visible' });
+      await page.locator(`#${sheet}Tab`).click(); // Fresh mock backend defaults to hitters.
       await page.locator('#toggleColumns').click();
       assert.equal(await page.locator('#columnChecklist input:not(:checked)').count(), 0);
       await page.locator('#autoColumns').click();

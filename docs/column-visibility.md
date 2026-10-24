@@ -10,7 +10,7 @@ Individual checkboxes remain available. **收合資料** independently folds met
 columns; expand it if selected metadata is not visible.
 
 Preferences stay in this browser across reloads, separately for both modes and
-hitter/pitcher sheets. These controls do not edit players or schedule cloud saves.
+hitter/pitcher sheets. Presets and column checkboxes do not edit players or schedule cloud saves.
 If browser storage fails, the new view works for this session and a warning appears.
 Normal Copy/Download JSON follows the selected columns; full-data backup and growth
 comparison retain all stored fields regardless of this view. Use full-data backup
