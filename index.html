@@ -168,6 +168,11 @@
       overflow: hidden;
     }
 
+    .sheet { overflow: visible; }
+    .sheet-header { border-radius: 8px 8px 0 0; }
+    .sheet .table-wrap { border-radius: 0 0 8px 8px; }
+    .column-panel p { margin: 8px 0; font-size: 13px; color: var(--muted); }
+
     .sheet-header,
     .output-header {
       display: flex;
@@ -535,7 +540,12 @@
             <div class="column-menu">
               <button type="button" id="toggleColumns" aria-expanded="false" aria-controls="columnPanel">欄位</button>
               <div class="column-panel" id="columnPanel" hidden>
-                <div class="column-checklist" id="columnChecklist"></div>
+                <div class="output-actions">
+                  <button type="button" id="showAllColumns">全選欄位</button>
+                  <button type="button" id="autoColumns">恢復自動</button>
+                </div>
+                <p id="columnHelp">只調整目前模式與資料表；自動顯示有資料及計算欄位。一般 JSON 隨欄位選擇變更，完整備份不受影響。「收合資料」另外控制資料欄顯示。</p>
+                <div class="column-checklist" id="columnChecklist" aria-describedby="columnHelp"></div>
               </div>
             </div>
             <button type="button" id="toggleMetadata" aria-pressed="false">收合資料</button>
@@ -1126,6 +1136,21 @@
       return columnVisibility[scopeKey];
     }
 
+    function applyColumnPreset(preset) {
+      const scopeKey = `${state.activeMode}:${state.activeSheet}`;
+      columnVisibility[scopeKey] = preset === "all"
+        ? Object.fromEntries(getSheetConfig().columns.map((column) => [column.field, true])) : {};
+      persistColumnView();
+    }
+    function persistColumnView() {
+      let saved = true;
+      try { saveColumnVisibility(); } catch (error) { console.warn(error); saved = false; }
+      render({ save: false });
+      setStatus(saved ? "已更新此資料表的欄位顯示。" : "已更新顯示，但瀏覽器無法儲存偏好；重新整理後可能不保留。");
+    }
+    document.querySelector("#showAllColumns").addEventListener("click", () => applyColumnPreset("all"));
+    document.querySelector("#autoColumns").addEventListener("click", () => applyColumnPreset("auto"));
+
     function hasColumnData(players, column) {
       return players.some((player) => String(getColumnValue(player, column)).trim() !== "");
     }
@@ -1182,8 +1207,7 @@
       columnChecklistEl.querySelectorAll("input:not(:disabled)").forEach((checkbox) => {
         checkbox.addEventListener("change", () => {
           scope[checkbox.dataset.field] = checkbox.checked;
-          saveColumnVisibility();
-          render();
+          persistColumnView();
         });
       });
     }
@@ -1271,7 +1295,7 @@
       tableWrapEl.style.setProperty("--table-min-width", `${getTableMinWidth(widthColumns)}px`);
       applyMetadataFold();
       renderSnapshotComparison();
-      saveState();
+      if (arguments[0]?.save !== false) saveState();
     }
 
     function makeActionButton(text, label, onClick, disabled = false, className = "") {
