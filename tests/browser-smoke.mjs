@@ -158,6 +158,8 @@ try {
       const data = await page.evaluate(() => JSON.stringify(buildStorageExport()));
       const writes = await page.evaluate(() => window.qaWrites.length);
       await page.locator('#hideUnchanged').check();
+      const box = await page.locator('#hideUnchanged').boundingBox();
+      assert.equal(box.width, 16); assert.equal(box.height, 16);
       assert.equal(await page.locator('#snapshotRows tr').count(), 2);
       assert.match(await page.locator('#comparisonFilterStatus').innerText(), /2 \/ 3/);
       assert.match(await page.locator('#snapshotRows').innerText(), /Changed/);

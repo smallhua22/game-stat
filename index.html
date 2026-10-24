@@ -426,6 +426,8 @@
     .snapshot-panel summary { cursor: pointer; font-weight: 650; }
     .snapshot-panel p { color: var(--muted); font-size: 13px; }
     #snapshotStatus { overflow-wrap: anywhere; }
+    .comparison-filter { display: inline-flex; align-items: center; gap: 6px; }
+    .comparison-filter input { width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; }
     .snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .snapshot-scroll { max-height: 280px; overflow: auto; margin-top: 12px; }
     .snapshot-results { min-width: 540px; table-layout: auto; }
@@ -518,7 +520,7 @@
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
-          <label><input type="checkbox" id="hideUnchanged" aria-describedby="comparisonFilterHelp" disabled> 隱藏零差值</label>
+          <label class="comparison-filter"><input type="checkbox" id="hideUnchanged" aria-describedby="comparisonFilterHelp" disabled> 隱藏零差值</label>
         </div>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
         <p id="comparisonFilterHelp">只隱藏目前欄位顯示為零的差值（小數最多三位）；未配對或數值無效的列仍保留，不代表表現好壞。</p>
