@@ -518,8 +518,11 @@
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
+          <label><input type="checkbox" id="hideUnchanged" aria-describedby="comparisonFilterHelp" disabled> 隱藏零差值</label>
         </div>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
+        <p id="comparisonFilterHelp">只隱藏目前欄位顯示為零的差值（小數最多三位）；未配對或數值無效的列仍保留，不代表表現好壞。</p>
+        <p id="comparisonFilterStatus" role="status" aria-live="polite" hidden></p>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
             <caption>目前數值包含畫面上尚未同步的修改；— 表示無法計算，並非零。</caption>
@@ -718,6 +721,9 @@
     const comparisonSnapshots = {};
     const comparisonMetrics = {};
     const comparisonLoads = {};
+    const comparisonFilters = {};
+    const hideUnchangedEl = document.querySelector("#hideUnchanged");
+    const comparisonFilterStatusEl = document.querySelector("#comparisonFilterStatus");
     const snapshotFileEl = document.querySelector("#snapshotFile");
     const snapshotMetricEl = document.querySelector("#snapshotMetric");
     const snapshotStatusEl = document.querySelector("#snapshotStatus");
@@ -730,6 +736,11 @@
 
     function renderSnapshotComparison() {
       const scope = `${state.activeMode}:${state.activeSheet}`;
+      const hasSnapshot = Boolean(comparisonSnapshots[state.activeMode]);
+      hideUnchangedEl.disabled = !hasSnapshot;
+      hideUnchangedEl.checked = comparisonFilters[scope] || false;
+      comparisonFilterStatusEl.hidden = !hasSnapshot;
+      comparisonFilterStatusEl.textContent = "";
       const columns = getSheetConfig().columns.filter((column) => numericSnapshotFields.has(column.field));
       if (state.activeSheet === "hitters") columns.push(...["avg", "obp", "slg"].map((field) => ({ field, label: field.toUpperCase() })));
       snapshotMetricEl.replaceChildren(...columns.map((column) => new Option(column.label, column.field)));
@@ -749,7 +760,11 @@
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
       const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";
       snapshotStatusEl.textContent = `${snapshot.name}（${dateLabel}）｜${comparable} 位可比較，${rows.length - comparable} 位無法比較。`;
-      rows.forEach((row) => {
+      const shown = rows.filter((row) => !hideUnchangedEl.checked || row.status ||
+        !Number.isFinite(row.delta) || Number(row.delta.toFixed(3)) !== 0);
+      comparisonFilterStatusEl.textContent = `顯示 ${shown.length} / ${rows.length} 列。` +
+        (shown.length ? "" : rows.length ? "全部差值顯示為零；取消勾選可查看全部。" : "此資料表沒有可列出的選手。");
+      shown.forEach((row) => {
         const tr = document.createElement("tr");
         [row.name, SnapshotComparison.format(row.before, field), SnapshotComparison.format(row.after, field),
           SnapshotComparison.format(row.delta, field, true), row.status || "可比較"].forEach((text) => {
@@ -760,6 +775,11 @@
         snapshotRowsEl.append(tr);
       });
     }
+
+    hideUnchangedEl.addEventListener("change", () => {
+      comparisonFilters[`${state.activeMode}:${state.activeSheet}`] = hideUnchangedEl.checked;
+      renderSnapshotComparison();
+    });
 
     document.querySelector("#loadSnapshot").addEventListener("click", () => snapshotFileEl.click());
     snapshotFileEl.addEventListener("change", async () => {

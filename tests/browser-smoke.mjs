@@ -137,6 +137,43 @@ try {
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
+  // Comparison filtering is view-only; unknown values never disappear as zero.
+  for (const mode of ['pawapuro', 'prospi']) {
+    await page.locator('#modeSelect').selectOption(mode);
+    await page.waitForFunction((mode) => JSON.parse(document.querySelector('#outputText').value).mode === mode, mode);
+    const fixture = { schemaVersion: 2, mode, sheets: Object.fromEntries(['hitters', 'pitchers'].map((sheet) =>
+      [sheet, ['Same', 'Changed', 'Missing'].map((name, i) => ({ name, hr: i === 2 ? '' : '3', ip: i === 2 ? '' : '10.2' }))])) };
+    await upload('#jsonFile', fixture, 'filter-fixture.json');
+    if (await page.locator('#confirmImport').isVisible()) await page.locator('#confirmImport').click();
+    for (const sheet of ['hitters', 'pitchers']) {
+      await page.locator(`#${sheet}Tab`).click();
+      const field = sheet === 'hitters' ? 'hr' : 'ip';
+      const earlier = await page.evaluate(() => buildStorageExport());
+      earlier.sheets[sheet][1][field] = sheet === 'hitters' ? '1' : '10.0';
+      earlier.sheets[sheet][2][field] = '1';
+      await upload('#snapshotFile', earlier, 'filter-baseline.json');
+      await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('filter-baseline.json'));
+      await page.locator('#snapshotMetric').selectOption(field);
+      await page.waitForTimeout(1000);
+      const data = await page.evaluate(() => JSON.stringify(buildStorageExport()));
+      const writes = await page.evaluate(() => window.qaWrites.length);
+      await page.locator('#hideUnchanged').check();
+      assert.equal(await page.locator('#snapshotRows tr').count(), 2);
+      assert.match(await page.locator('#comparisonFilterStatus').innerText(), /2 \/ 3/);
+      assert.match(await page.locator('#snapshotRows').innerText(), /Changed/);
+      assert.match(await page.locator('#snapshotRows').innerText(), /缺少或無效數值/);
+      assert.doesNotMatch(await page.locator('#snapshotRows').innerText(), /Same/);
+      await page.waitForTimeout(1000);
+      assert.equal(await page.evaluate(() => JSON.stringify(buildStorageExport())), data);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+      await page.screenshot({ path: `browser-artifacts/filter-${mode}-${sheet}.png`, fullPage: true });
+      await page.locator('#hideUnchanged').uncheck();
+      assert.equal(await page.locator('#snapshotRows tr').count(), 3);
+      await page.locator('#clearSnapshot').click();
+      assert.equal(await page.locator('#hideUnchanged').isDisabled(), true);
+      assert.equal(await page.locator('#comparisonFilterStatus').isVisible(), false);
+    }
+  }
   assert.deepEqual(errors, []);
   console.log(`PASS real Chromium ${browser.version()}; isolated backend, no local-computer dependency`);
 } catch (error) {
