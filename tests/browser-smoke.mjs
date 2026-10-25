@@ -155,9 +155,10 @@ try {
     for (const rows of Object.values(earlier.sheets)) rows.forEach((row) => { row.hr = '3'; row.era = '3'; row.ip = '3'; });
     await upload('#snapshotFile', earlier, 'sorting-baseline.json');
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('sorting-baseline.json'));
-    const writes = await page.evaluate(() => window.qaWrites.length);
     for (const sheet of ['hitters', 'pitchers']) {
       await page.locator(`#${sheet}Tab`).click();
+      await page.waitForTimeout(1200); // Flush the normal sheet-switch save, not a sorting write.
+      const writes = await page.evaluate(() => window.qaWrites.length);
       const original = await output();
       const names = () => page.locator('#snapshotRows tr td:first-child').allTextContents();
       await page.locator('#snapshotOrder').selectOption('descending');
@@ -168,9 +169,9 @@ try {
       await page.locator('#snapshotOrder').selectOption('original');
       assert.deepEqual(await names(), ['Ten', 'Two', 'Negative', 'Missing']);
       assert.deepEqual(await output(), original);
+      await page.waitForTimeout(1200);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
     }
-    await page.waitForTimeout(1200);
-    assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotOrder').isDisabled(), true);
     console.log(`PASS ${mode}: numeric delta ordering, unknowns last, reset, unchanged exports and no sort-triggered saves`);
