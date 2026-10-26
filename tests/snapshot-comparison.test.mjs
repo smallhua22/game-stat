@@ -86,3 +86,36 @@ test("missing fields never turn into zero changes or false improvement", () => {
   assert.equal(comparison.format(-.00001, "avg", true), "0");
   assert.equal(comparison.format(-1, "hr", true), "−1");
 });
+
+test("chart shares a zero-inclusive scale, preserves sign and does not mutate rows", () => {
+  const rows = [{ name: "A", before: 4, after: 8, delta: 4, status: "" },
+    { name: "B", before: -4, after: 0, delta: 4, status: "" },
+    { name: "Unknown", before: null, after: 1000, delta: null, status: "missing" }];
+  const original = JSON.stringify(rows);
+  const chart = comparison.chart(rows);
+  assert.equal(chart.min, -4); assert.equal(chart.max, 8);
+  assert.equal(chart.points.length, 2);
+  assert.ok(Math.abs(chart.zero - 100 / 3) < 1e-10);
+  assert.deepEqual(chart.points[1].before, { left: 0, width: chart.zero });
+  assert.deepEqual(chart.points[1].after, { left: chart.zero, width: 0 });
+  assert.ok(Math.abs(chart.points[0].after.width - 200 / 3) < 1e-10);
+  assert.equal(JSON.stringify(rows), original);
+});
+
+test("chart handles zero, displayed precision, empty sets and extreme finite numbers", () => {
+  const row = (before, after) => ({ before, after, delta: after - before, status: "" });
+  assert.deepEqual(comparison.chart([]).points, []);
+  const zero = comparison.chart([row(0, 0)]);
+  assert.deepEqual(zero.points[0].before, { left: 0, width: 0 });
+  assert.equal(zero.max, 0);
+  const rounded = comparison.chart([row(.0004, .0001)]);
+  assert.equal(rounded.max, 0);
+  const extreme = comparison.chart([row(-1e308, -1e308), row(1e308, 1e308)]);
+  assert.equal(extreme.zero, 50);
+  assert.equal(extreme.points[0].before.width, 50);
+  assert.equal(extreme.points[1].after.width, 50);
+  assert.equal(comparison.chart([row(-1e308, 1e308)]).points.length, 0);
+  const ip = comparison.chart(comparison.compare([{ name: "P", ip: "11.1" }], [{ name: "P", ip: "10.2" }], "ip"));
+  assert.equal(ip.points[0].row.before, 32); assert.equal(ip.points[0].row.after, 34);
+  assert.equal(comparison.format(ip.points[0].row.delta, "ip", true), "+0.2");
+});

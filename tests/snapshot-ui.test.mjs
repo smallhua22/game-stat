@@ -147,3 +147,32 @@ test("pending reads retain their mode without changing another mode's comparison
   h.render();
   assert.match(h.el("#snapshotStatus").textContent, /earlier.json/);
 });
+
+test("performance chart follows real metric/edit/mode/sheet handlers and clear", async () => {
+  const h = harness();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  const original = JSON.stringify(h.players);
+  await h.upload(snapshot());
+  assert.equal(h.el("#performanceChart").hidden, false);
+  let item = h.el("#performanceRows").children[0];
+  assert.equal(item.children[0].textContent, "A · 差值 +5");
+  assert.equal(item.children[1].children[2].textContent, "3");
+  assert.equal(item.children[2].children[2].textContent, "8");
+  assert.equal(JSON.stringify(h.players), original);
+  h.players.hitters[0].hr = ""; h.render();
+  assert.equal(h.el("#performanceRows").children.length, 0);
+  assert.match(h.el("#performanceScale").textContent, /沒有可繪圖/);
+  h.state.activeSheet = "pitchers"; h.render();
+  h.el("#snapshotMetric").value = "ip"; h.el("#snapshotMetric").listeners.change();
+  item = h.el("#performanceRows").children[0];
+  assert.equal(item.children[0].textContent, "P · 差值 +0.2");
+  assert.match(h.el("#performanceScale").textContent, /長度依出局數/);
+  h.state.activeMode = "prospi"; h.render();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  assert.equal(h.el("#performanceRows").children.length, 0);
+  await h.upload(snapshot("3", "prospi"));
+  assert.equal(h.el("#performanceChart").hidden, false);
+  h.clear();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  assert.equal(h.el("#performanceRows").children.length, 0);
+});

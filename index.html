@@ -429,6 +429,18 @@
     .snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .snapshot-scroll { max-height: 280px; overflow: auto; margin-top: 12px; }
     .snapshot-results { min-width: 540px; table-layout: auto; }
+    .performance-chart { margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .performance-chart h3 { margin: 0; font-size: 16px; }
+    .performance-chart ol { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow: auto; }
+    .performance-chart li { padding: 10px 4px; border-top: 1px solid var(--line); }
+    .performance-chart strong { overflow-wrap: anywhere; }
+    .performance-series { display: grid; grid-template-columns: 5em minmax(0, 1fr) 5em; gap: 8px; align-items: center; font-size: 12px; margin-top: 5px; }
+    .performance-track { height: 12px; position: relative; background: #eef1f5; }
+    .performance-bar { position: absolute; height: 100%; background: #64748b; }
+    .performance-bar.current { background: #2563eb; }
+    .performance-zero { position: absolute; height: 16px; top: -2px; border-left: 1px solid #172033; }
+    .performance-value { text-align: right; overflow-wrap: anywhere; }
+
     .snapshot-results caption { text-align: left; padding: 8px; font-size: 13px; }
 
     .user-control { display: flex; align-items: center; gap: 8px; }
@@ -520,6 +532,11 @@
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
         </div>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
+        <section id="performanceChart" class="performance-chart" aria-labelledby="performanceTitle" hidden>
+          <h3 id="performanceTitle">選手表現比較</h3>
+          <p id="performanceScale"></p>
+          <ol id="performanceRows" tabindex="0" aria-label="選手表現圖，可捲動"></ol>
+        </section>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
             <caption>目前數值包含畫面上尚未同步的修改；— 表示無法計算，並非零。</caption>
@@ -728,6 +745,37 @@
       "h", "hbp", "w", "l", "hld", "sv"
     ]);
 
+    function renderPerformanceChart(rows, field, label) {
+      const chart = SnapshotComparison.chart(rows);
+      const list = document.querySelector("#performanceRows");
+      list.replaceChildren();
+      document.querySelector("#performanceTitle").textContent = `${label}｜選手表現比較`;
+      document.querySelector("#performanceScale").textContent = chart.points.length
+        ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 位已繪圖，${rows.length - chart.points.length} 位無法繪圖（詳見下表）。長條不代表表現好壞。`
+        : "沒有可繪圖的配對數值；缺值不當作零，詳見下表。";
+      chart.points.forEach((point) => {
+        const item = document.createElement("li");
+        const name = document.createElement("strong");
+        name.textContent = `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}`;
+        item.append(name);
+        [["before", "較早快照", ""], ["after", "目前", " current"]].forEach(([key, label, modifier]) => {
+          const series = document.createElement("div");
+          series.className = "performance-series";
+          const caption = document.createElement("span"); caption.textContent = label;
+          const track = document.createElement("span"); track.className = "performance-track";
+          const bar = document.createElement("span"); bar.className = `performance-bar${modifier}`;
+          bar.style = `left:${point[key].left}%;width:${point[key].width}%`;
+          const zero = document.createElement("span"); zero.className = "performance-zero";
+          zero.style = `left:${chart.zero}%`;
+          track.append(bar, zero);
+          const value = document.createElement("span"); value.className = "performance-value";
+          value.textContent = SnapshotComparison.format(point.row[key], field);
+          series.append(caption, track, value); item.append(series);
+        });
+        list.append(item);
+      });
+    }
+
     function renderSnapshotComparison() {
       const scope = `${state.activeMode}:${state.activeSheet}`;
       const columns = getSheetConfig().columns.filter((column) => numericSnapshotFields.has(column.field));
@@ -739,6 +787,8 @@
       document.querySelector("#snapshotResults").hidden = !snapshot;
       snapshotMetricEl.disabled = !snapshot;
       snapshotRowsEl.replaceChildren();
+      document.querySelector("#performanceChart").hidden = !snapshot;
+      document.querySelector("#performanceRows").replaceChildren();
       if (!snapshot) {
         snapshotStatusEl.textContent = `尚未選擇 ${modes[state.activeMode].label} 快照。`;
         return;
@@ -749,6 +799,7 @@
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
       const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";
       snapshotStatusEl.textContent = `${snapshot.name}（${dateLabel}）｜${comparable} 位可比較，${rows.length - comparable} 位無法比較。`;
+      renderPerformanceChart(rows, field, columns.find((column) => column.field === field).label);
       rows.forEach((row) => {
         const tr = document.createElement("tr");
         [row.name, SnapshotComparison.format(row.before, field), SnapshotComparison.format(row.after, field),
