@@ -17,8 +17,8 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 function mockBackend() {
   const tables = Object.fromEntries(['pawapuro', 'prospi'].map((mode) => [mode,
-    { schemaVersion: 2, mode, sheets: { hitters: [{ name: 'A', hr: '3' }],
-      pitchers: [{ name: 'P', ip: '10.2', era: '3' }] } }]));
+    { schemaVersion: 2, mode, sheets: { hitters: [{ name: 'A', age: '22', pa: '100', ab: '90', hr: '3', rbi: '12', sb: '2', k: '7', bb: '5', slashLine: '.250/.320/.400', currentSpirit: '4200', trainableSpirit: '4300', maxSpirit: '4500' }],
+      pitchers: [{ name: 'P', age: '24', velocity: '150', gp: '5', ip: '10.2', era: '3', whip: '1.2', fip: '3.4', k: '12', bb: '3', h: '8', hr: '1', ab: '40', hbp: '1', w: '2', l: '1', hld: '0', sv: '0', currentSpirit: '4200', trainableSpirit: '4300', maxSpirit: '4500' }] } }]));
   window.qaWrites = [];
   window.supabase = { createClient: () => ({ auth: {
     getSession: async () => ({ data: { session: { user: { id: 'qa', email: 'qa@example.invalid' } } } }),
@@ -134,6 +134,8 @@ try {
     assert.match(await page.locator('#snapshotStatus').innerText(), /newest.json/);
     const overviewBaseline = structuredClone(earlier);
     overviewBaseline.sheets.pitchers[1].ip = '9.2';
+    overviewBaseline.sheets.pitchers[1].era = '4';
+    overviewBaseline.sheets.hitters[1].slashLine = '.200/.300/.350';
     await upload('#snapshotFile', overviewBaseline, 'overview.json');
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('overview.json'));
     for (const sheet of ['hitters', 'pitchers']) {
