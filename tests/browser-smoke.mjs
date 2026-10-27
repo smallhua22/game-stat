@@ -154,6 +154,12 @@ try {
       assert.deepEqual(await output(), current);
       await page.waitForTimeout(1000);
       assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+      await page.setViewportSize({ width: 1440, height: 1600 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      assert.equal(await page.locator('#overviewPlayer').evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el;
+      }), true, 'Player selector must be accessible above the cards, not behind the sticky header');
       await page.locator('#playerOverview').screenshot({ path: `browser-artifacts/${mode}-${sheet}-overview.png` });
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(await page.locator('#playerOverview').evaluate((el) => el.scrollWidth <= el.clientWidth), true);
