@@ -147,3 +147,29 @@ test("pending reads retain their mode without changing another mode's comparison
   h.render();
   assert.match(h.el("#snapshotStatus").textContent, /earlier.json/);
 });
+
+test("player overview retains a selected identity across rename/reorder and isolates sheets/modes", async () => {
+  const h = harness();
+  const id = "11111111-1111-4111-8111-111111111111";
+  const second = "22222222-2222-4222-8222-222222222222";
+  h.players.hitters = [{ rowId: id, name: "Same", hr: "8" }, { rowId: second, name: "Same", hr: "5" }];
+  const baseline = snapshot();
+  baseline.sheets.hitters = [{ rowId: id, name: "Old", hr: "3" }, { rowId: second, name: "Same", hr: "2" }];
+  await h.upload(baseline);
+  assert.deepEqual(h.el("#overviewPlayer").children.map((p) => p.label), ["1. Same", "2. Same"]);
+  h.el("#overviewPlayer").value = second; h.el("#overviewPlayer").listeners.change();
+  const delta = () => h.el("#playerMetrics").children[0].children.at(-1).textContent;
+  assert.equal(delta(), "差值 +3");
+  h.players.hitters.reverse(); h.players.hitters[0].name = "Renamed"; h.render();
+  assert.equal(h.el("#overviewPlayer").value, second); assert.equal(delta(), "差值 +3");
+  h.players.hitters[0].hr = "9"; h.render(); assert.equal(delta(), "差值 +7");
+  h.state.activeSheet = "pitchers"; h.render();
+  assert.notEqual(h.el("#overviewPlayer").value, second);
+  h.state.activeSheet = "hitters"; h.render(); assert.equal(h.el("#overviewPlayer").value, second);
+  h.state.activeMode = "prospi"; h.render(); assert.equal(h.el("#playerOverview").hidden, true);
+  h.state.activeMode = "pawapuro"; h.render(); assert.equal(h.el("#overviewPlayer").value, second);
+  h.players.hitters.shift(); h.render(); assert.equal(h.el("#overviewPlayer").value, id);
+  h.players.hitters.length = 0; h.render();
+  assert.equal(h.el("#overviewPlayer").disabled, true); assert.equal(h.el("#playerMetrics").children.length, 0);
+  h.clear(); assert.equal(h.el("#playerOverview").hidden, true);
+});

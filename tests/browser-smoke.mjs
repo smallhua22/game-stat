@@ -132,9 +132,36 @@ try {
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('newest.json'));
     await page.evaluate(async () => { await window.releaseSlow(); window.restoreFileText(); });
     assert.match(await page.locator('#snapshotStatus').innerText(), /newest.json/);
+    const overviewBaseline = structuredClone(earlier);
+    overviewBaseline.sheets.pitchers[1].ip = '9.2';
+    await upload('#snapshotFile', overviewBaseline, 'overview.json');
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('overview.json'));
+    for (const sheet of ['hitters', 'pitchers']) {
+      await page.locator(`#${sheet}Tab`).click();
+      const current = await output();
+      const selected = current.sheets[sheet][1].rowId;
+      await page.waitForTimeout(1000); // Let legitimate earlier edits/tab autosaves settle.
+      const writes = await page.evaluate(() => window.qaWrites.length);
+      await page.locator('#overviewPlayer').selectOption(selected);
+      const card = page.locator('.player-metric').filter({ has: page.getByRole('heading', { name: sheet === 'hitters' ? 'HR' : 'IP', exact: true }) });
+      assert.match(await card.innerText(), sheet === 'hitters' ? /較早快照\s+1\s+目前\s+3\s+差值 \+2/ : /較早快照\s+9.2\s+目前\s+10.2\s+差值 \+1.0/);
+      assert.ok(await page.locator('.player-metric').count() > 5);
+      await page.locator('#overviewPlayer').selectOption(current.sheets[sheet][0].rowId);
+      await page.locator('#overviewPlayer').selectOption(selected);
+      assert.equal(await page.locator('#overviewPlayer').inputValue(), selected);
+      assert.deepEqual(await output(), current);
+      await page.waitForTimeout(1000);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+      await page.locator('#playerOverview').screenshot({ path: `browser-artifacts/${mode}-${sheet}-overview.png` });
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await page.locator('#playerOverview').evaluate((el) => el.scrollWidth <= el.clientWidth), true);
+      await page.locator('#playerOverview').screenshot({ path: `browser-artifacts/${mode}-${sheet}-overview-mobile.png` });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
+    assert.equal(await page.locator('#playerOverview').isVisible(), false);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
   assert.deepEqual(errors, []);
