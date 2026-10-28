@@ -495,7 +495,7 @@
         <button type="button" id="addPlayer" class="primary">新增選手</button>
         <button type="button" id="copyJson">複製 JSON</button>
         <button type="button" id="downloadJson">下載 JSON</button>
-        <button type="button" id="downloadBackup" aria-describedby="backupHelp">下載完整備份</button>
+        <button type="button" id="downloadBackup">下載完整備份</button>
         <button type="button" id="importJson">匯入 JSON</button>
         <input type="file" id="jsonFile" accept="application/json,.json" hidden>
         <button type="button" id="resetSample">重設範例</button>
@@ -569,7 +569,6 @@
             <button type="button" id="copyJsonSide">複製</button>
           </div>
         </div>
-        <p id="backupHelp">一般 JSON 只含可見欄位；完整備份包含目前模式的打者、投手與隱藏欄位（含尚未同步的修改）。不含另一模式或顯示設定。可透過「匯入 JSON」還原，會取代該模式資料。</p>
         <textarea id="outputText" spellcheck="false" readonly></textarea>
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </aside>
