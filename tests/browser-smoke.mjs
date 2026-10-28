@@ -93,6 +93,41 @@ try {
     await upload('#snapshotFile', earlier);
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('earlier.json'));
     assert.match(await page.locator('#snapshotRows tr').nth(1).innerText(), /Renamed\s+1\s+3\s+\+2\s+可比較/);
+    assert.equal(await page.locator('#downloadComparison').isDisabled(), false);
+    const report = async () => {
+      const event = page.waitForEvent('download');
+      await page.locator('#downloadComparison').click();
+      const file = await event;
+      assert.match(file.suggestedFilename(), new RegExp(`^game-stat-${mode}-`));
+      return readFile(await file.path(), 'utf8');
+    };
+    const csv = await report();
+    assert.ok(csv.startsWith('\ufeff"generated_at_utc"'));
+    assert.ok(csv.includes('"Renamed","1","3","+2","可比較"'));
+    assert.ok(csv.includes(`"${mode}","hitters","hr","earlier.json"`));
+    await page.locator('#rows tr').nth(1).locator('[data-field="hr"]').fill('4');
+    assert.ok((await report()).includes('"Renamed","1","4","+3","可比較"'));
+    await page.locator('#rows tr').nth(1).locator('[data-field="hr"]').fill('3');
+    await page.locator('#pitchersTab').click();
+    await page.locator('#snapshotMetric').selectOption('ip');
+    await page.locator('#rows tr').nth(1).locator('[data-field="ip"]').fill('11.1');
+    assert.ok((await report()).includes('"10.2","11.1","+0.2"'));
+    await page.locator('#rows tr').nth(1).locator('[data-field="ip"]').fill('10.2');
+    await page.locator('#hittersTab').click();
+    await page.evaluate(() => {
+      window.originalObjectURL = URL.createObjectURL;
+      URL.createObjectURL = () => { throw new Error('simulated download failure'); };
+    });
+    await page.locator('#downloadComparison').click();
+    assert.match(await page.locator('#comparisonDownloadStatus').innerText(), /無法下載/);
+    await page.evaluate(() => { URL.createObjectURL = window.originalObjectURL; });
+    assert.ok((await report()).includes('"Renamed","1","3","+2"'));
+    assert.match(await page.locator('#comparisonDownloadStatus').innerText(), /已開始下載/);
+    // Flush any pre-existing autosave, then confirm repeated report downloads do not write.
+    await page.waitForTimeout(1200);
+    const writes = await page.evaluate(() => window.qaWrites.length);
+    await report(); await report();
+    assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
     const legacy = structuredClone(earlier);
     legacy.sheets.hitters = [{ name: 'Renamed', hr: '2' }]; legacy.sheets.pitchers = [];
     await upload('#snapshotFile', legacy, 'legacy.json');
@@ -177,6 +212,7 @@ try {
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
+    assert.equal(await page.locator('#downloadComparison').isDisabled(), true);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
   assert.deepEqual(errors, []);

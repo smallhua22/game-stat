@@ -90,6 +90,21 @@ const SnapshotComparison = (() => {
     });
     return rows;
   }
-  return { validate, value, format, compare };
+  // Export displayed comparison rows, not an importable data backup.
+  function csv(rows, context) {
+    const cell = (value, protect = true) => {
+      let text = String(value ?? "");
+      // Spreadsheet formula prefixes can hide behind whitespace/control characters.
+      if (protect && /^[\s\u0000-\u001f]*[=+@-]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const header = ["generated_at_utc", "mode", "sheet", "metric", "baseline_file",
+      "baseline_exported_at", "player", "baseline", "current", "current_minus_baseline", "status"];
+    const metadata = [context.generatedAt, context.mode, context.sheet, context.metric,
+      context.filename, context.exportedAt];
+    return "\ufeff" + [header.map((v) => cell(v)).join(","), ...rows.map((row) =>
+      [...metadata.map((v) => cell(v)), ...row.map((v, i) => cell(v, i === 0 || i === 4))].join(","))].join("\r\n") + "\r\n";
+  }
+  return { validate, value, format, compare, csv };
 })();
 if (typeof module !== "undefined") module.exports = SnapshotComparison;
