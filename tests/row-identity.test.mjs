@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
+import linking from "../legacy-linking.js";
 import identity from "../row-identity.js";
 import comparison from "../snapshot-comparison.js";
 
@@ -10,7 +11,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const between = (start, end) => html.slice(html.indexOf(start), html.indexOf(end));
 const id = () => webcrypto.randomUUID();
 function harness(mode = "pawapuro") {
-  const context = vm.createContext({ RowIdentity: identity, SCHEMA_VERSION: 2, console,
+  const context = vm.createContext({ RowIdentity: identity, LegacyLinking: linking, SCHEMA_VERSION: 2, console,
     nameColumn: { field: "name" }, modes: {}, state: { activeMode: mode, activeSheet: "hitters" },
     modeDataCache: {}, modeUpdatedAt: {}, currentUser: { id: "test-user" },
     getColumnValue: (player, column) => player[column.field],
@@ -61,10 +62,15 @@ test("legacy migration is retained in actual cloud-save payload and reload", asy
     h.run(`modeDataCache[state.activeMode] = normalizeModeData(state.activeMode,
       { sheets: { hitters: [{ name: "A" }], pitchers: [{ name: "A" }] } });
       modeUpdatedAt[state.activeMode] = "previous";`);
+    h.run(`modeDataCache[state.activeMode].legacyLinks = { ["a".repeat(64)]: {
+      hitters: [getActiveModeData().sheets.hitters[0].rowId], pitchers: [getActiveModeData().sheets.pitchers[0].rowId] } };`);
     await h.run("saveModeToCloud(state.activeMode)");
+    assert.deepEqual(JSON.parse(JSON.stringify(payload.legacyLinks)),
+      JSON.parse(h.run("JSON.stringify(getActiveModeData().legacyLinks)")));
     assert.ok(identity.valid(payload.sheets.hitters[0].rowId));
     assert.notEqual(payload.sheets.hitters[0].rowId, payload.sheets.pitchers[0].rowId);
     h.context.saved = JSON.parse(JSON.stringify(payload));
+    assert.equal(h.run('normalizeModeData(state.activeMode, saved).legacyLinks["a".repeat(64)].hitters[0]'), payload.sheets.hitters[0].rowId);
     assert.equal(h.run("normalizeModeData(state.activeMode, saved).sheets.hitters[0].rowId"),
       payload.sheets.hitters[0].rowId);
   }
@@ -138,6 +144,46 @@ test("real import handler rejects damaged identities without changing data or sa
       assert.equal(h.run("modeDataCache[file.mode]"), undefined);
       assert.equal(h.context.state.activeMode, mode);
       assert.equal(h.context.state.activeSheet, "hitters");
+    }
+    assert.equal(saves, 0);
+    assert.equal(renders, 0);
+  }
+});
+
+test("real import rejects conflicting saved links after a deleted target gains an unrelated namesake", async () => {
+  for (const mode of ["pawapuro", "prospi"]) {
+    const h = harness(mode), target = id(), unrelated = id(), pitcher = id();
+    const snapshot = { mode, sheets: { hitters: [{ name: "Alex", hr: "1" }], pitchers: [{ name: "P" }] } };
+    const key = await linking.key(snapshot);
+    h.context.input = { mode, sheets: { hitters: [{ name: "Alex", rowId: target, hr: "8" }],
+      pitchers: [{ name: "P", rowId: pitcher }] }, legacyLinks: { [key]: { hitters: [target], pitchers: [pitcher] } } };
+    h.run("modeDataCache[state.activeMode] = normalizeModeData(state.activeMode, input)");
+    const previous = h.run("getActiveModeData()");
+    assert.equal(comparison.compare(previous.sheets.hitters,
+      linking.apply(snapshot, previous.legacyLinks[key]).sheets.hitters, "hr")[0].delta, 7);
+    previous.sheets.hitters = [{ name: "Alex", rowId: unrelated, hr: "9" }]; // Delete the linked player.
+    const assertProtected = () => {
+      assert.equal(linking.plan(snapshot, previous, previous.legacyLinks[key]).hitters[0], target);
+      assert.ok(comparison.compare(previous.sheets.hitters,
+        linking.apply(snapshot, previous.legacyLinks[key]).sheets.hitters, "hr").every((r) => r.delta === null));
+    };
+    assertProtected();
+    let status, saves = 0, renders = 0;
+    Object.assign(h.context, { jsonFileEl: { value: "selected.json" },
+      FileReader: class {
+        addEventListener(_event, handler) { this.loaded = handler; }
+        readAsText(file) { this.result = JSON.stringify(file); this.loaded(); }
+      }, console: { warn() {} }, setStatus(message) { status = message; },
+      render() { renders++; }, saveModeToCloud() { saves++; } });
+    vm.runInContext(between("    function importJsonFile(", "    function updateComputedCells("), h.context);
+    for (const bad of [target, "broken"]) {
+      h.context.file = JSON.parse(JSON.stringify(previous));
+      h.context.file.legacyLinks[key].pitchers[0] = bad;
+      h.run("importJsonFile(file)");
+      assert.match(status, /配對資訊.*原有資料未變更/);
+      assert.equal(h.run("getActiveModeData()"), previous);
+      assert.equal(h.context.jsonFileEl.value, "");
+      assertProtected();
     }
     assert.equal(saves, 0);
     assert.equal(renders, 0);

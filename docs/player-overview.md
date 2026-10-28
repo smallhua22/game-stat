@@ -18,7 +18,7 @@ Larger values are not necessarily better. No composite score or multi-date trend
 Selections are temporary per mode/sheet, follow persistent row identity through rename/reorder,
 and fall back to the first current row when the selected row is removed. Numbered options
 identify same-name rows. Earlier-only rows stay in the existing comparison table, not the selector.
-When composing with #7, pass its resolved snapshot data to the overview as well as the roster comparison.
+Saved legacy links are applied once to the shared baseline used by the overview and roster comparison.
 The overview updates with unsynced edits and does not save, import, export or modify player data.
 Clearing the snapshot hides it. Named saved snapshots remain separate work in #4, dependent on #3.
 
@@ -36,5 +36,5 @@ AVG／OBP／SLG 分卡呈現；不含文字、等級及計算欄位。這是儲�
 數字較大不一定較好，不合成總分或暗示多日期趨勢。
 
 選擇依模式／資料表暫存，改名、排序仍依識別資訊保留；刪除後回到第一列，同名選項附列號。
-僅在較早快照存在的列仍可在原比較表查看。與 #7 組合時，總覽與全隊比較須共用套用配對後的快照。隨尚未同步編輯更新，不修改資料或新增雲端儲存；
+僅在較早快照存在的列仍可在原比較表查看。總覽與全隊比較共用套用已儲存配對後的快照。隨尚未同步編輯更新，不修改資料或新增雲端儲存；
 清除快照即隱藏總覽。具名快照仍留待 #4，先完成 #3 的依賴。
