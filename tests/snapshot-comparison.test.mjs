@@ -86,3 +86,35 @@ test("missing fields never turn into zero changes or false improvement", () => {
   assert.equal(comparison.format(-.00001, "avg", true), "0");
   assert.equal(comparison.format(-1, "hr", true), "−1");
 });
+
+test("player profile keeps identity, distinct metric scales, rates, innings and source data", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const current = [{ rowId: id, name: "Renamed", hr: "8", era: "-2", ip: "11.1", slashLine: ".3/.4/.5" }];
+  const earlier = [{ rowId: id, name: "Old", hr: "2", era: "4", ip: "10.2", slashLine: ".2/.3/.4" }];
+  const original = JSON.stringify({ current, earlier });
+  const columns = ["hr", "era", "ip", "avg", "bb"].map((field) => ({ field, label: field }));
+  const cards = comparison.profile(current, earlier, 0, columns);
+  assert.equal(cards[0].name, "Renamed");
+  assert.equal(cards[0].bars.before.width, 25);
+  assert.equal(cards[0].bars.after.width, 100);
+  assert.ok(Math.abs(cards[1].bars.zero - 100 / 3) < 1e-10);
+  assert.equal(cards[1].bars.after.left, 0);
+  assert.equal(cards[2].delta, 2);
+  assert.equal(comparison.format(cards[2].delta, "ip", true), "+0.2");
+  assert.equal(comparison.format(cards[3].delta, "avg", true), "+0.1");
+  assert.equal(cards[4].bars, null);
+  assert.equal(cards[4].delta, null);
+  assert.equal(JSON.stringify({ current, earlier }), original);
+  assert.deepEqual(comparison.profile(current, earlier, -1, columns), []);
+});
+
+test("profile never plots ambiguous, missing or nonfinite comparisons as zero", () => {
+  const columns = [{ field: "hr", label: "HR" }];
+  const profile = (current, earlier) => comparison.profile(current, earlier, 0, columns)[0];
+  assert.equal(profile([{ name: "A", hr: 1 }], [{ name: "A", hr: 1 }, { name: "A", hr: 2 }]).bars, null);
+  assert.equal(profile([{ name: "A", hr: 1 }], [{ name: "A" }]).bars, null);
+  const overflow = profile([{ name: "A", hr: "1" + "0".repeat(308) }], [{ name: "A", hr: "-1" + "0".repeat(308) }]);
+  assert.equal(overflow.bars, null); assert.match(overflow.status, /超出/);
+  const zero = profile([{ name: "A", hr: 0 }], [{ name: "A", hr: 0 }]);
+  assert.equal(zero.bars.before.width, 0); assert.equal(zero.bars.after.width, 0);
+});

@@ -429,6 +429,21 @@
     .snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .snapshot-scroll { max-height: 280px; overflow: auto; margin-top: 12px; }
     .snapshot-results { min-width: 540px; table-layout: auto; }
+    .player-overview { margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .player-overview h3 { margin: 0 0 8px; }
+    .player-overview select { max-width: 100%; }
+    .player-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .player-metric { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .player-metric h4 { margin: 0 0 8px; overflow-wrap: anywhere; }
+    .player-metric p { margin: 5px 0; overflow-wrap: anywhere; }
+    .metric-pair { display: grid; grid-template-columns: 5em minmax(0, 1fr) 5em; align-items: center; gap: 6px; font-size: 12px; }
+    .metric-track { position: relative; height: 10px; background: var(--panel-2); }
+    .metric-bar { position: absolute; height: 100%; background: #64748b; }
+    .metric-bar.current { background: #2563eb; }
+    .metric-zero { position: absolute; top: -2px; height: 14px; border-left: 1px solid var(--text); }
+    .metric-value { text-align: right; overflow-wrap: anywhere; }
+    @media (max-width: 480px) { .player-metrics { grid-template-columns: minmax(0, 1fr); } }
+
     .snapshot-results caption { text-align: left; padding: 8px; font-size: 13px; }
 
     .user-control { display: flex; align-items: center; gap: 8px; }
@@ -530,6 +545,14 @@
           <p>配對會隨此模式資料同步至帳戶；請確認頁面顯示「已同步至雲端」。失敗時可重新儲存配對。</p>
         </dialog>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
+        <section id="playerOverview" class="player-overview" aria-labelledby="playerOverviewTitle" hidden>
+          <h3 id="playerOverviewTitle">單一選手表現總覽</h3>
+          <label for="overviewPlayer">目前選手</label>
+          <select id="overviewPlayer" aria-describedby="overviewHelp"></select>
+          <p id="overviewHelp">每張卡片各自使用含零刻度，只比較同一欄位的兩條長度，不跨欄位比較。直線為零，IP 長度依出局數。差值不代表好壞；— 不是零。</p>
+          <p id="overviewStatus" role="status"></p>
+          <div id="playerMetrics" class="player-metrics"></div>
+        </section>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
             <caption>目前數值包含畫面上尚未同步的修改；— 表示無法計算，並非零。</caption>
@@ -741,6 +764,49 @@
       "h", "hbp", "w", "l", "hld", "sv"
     ]);
 
+    const overviewSelections = {};
+    const overviewPlayerEl = document.querySelector("#overviewPlayer");
+    overviewPlayerEl.addEventListener("change", () => {
+      overviewSelections[`${state.activeMode}:${state.activeSheet}`] = overviewPlayerEl.value;
+      renderSnapshotComparison();
+    });
+    function renderPlayerOverview(snapshot, columns, scope) {
+      const players = getActivePlayers();
+      const keys = players.map((player, index) => player.rowId || `index:${index}`);
+      overviewPlayerEl.replaceChildren(...players.map((player, index) =>
+        new Option(`${index + 1}. ${player.name.trim() || "（未命名）"}`, keys[index])));
+      const selected = keys.includes(overviewSelections[scope]) ? overviewSelections[scope] : keys[0];
+      overviewPlayerEl.value = overviewSelections[scope] = selected || "";
+      overviewPlayerEl.disabled = !players.length;
+      const cards = document.querySelector("#playerMetrics"); cards.replaceChildren();
+      document.querySelector("#playerOverview").hidden = !snapshot;
+      document.querySelector("#overviewStatus").textContent = players.length
+        ? "目前數值包含尚未同步的修改；較早數值來自上方快照。" : "目前資料表沒有選手。";
+      if (!snapshot || !players.length) return;
+      SnapshotComparison.profile(players, snapshot.data.sheets[state.activeSheet], keys.indexOf(selected), columns)
+        .forEach((metric) => {
+          const card = document.createElement("section"); card.className = "player-metric";
+          const title = document.createElement("h4"); title.textContent = metric.label; card.append(title);
+          [["before", "較早快照", ""], ["after", "目前", " current"]].forEach(([key, label, modifier]) => {
+            const pair = document.createElement("p"); pair.className = "metric-pair";
+            const caption = document.createElement("span"); caption.textContent = label;
+            const track = document.createElement("span"); track.className = "metric-track";
+            if (metric.bars) {
+              const bar = document.createElement("span"); bar.className = `metric-bar${modifier}`;
+              bar.style = `left:${metric.bars[key].left}%;width:${metric.bars[key].width}%`;
+              const zero = document.createElement("span"); zero.className = "metric-zero";
+              zero.style = `left:${metric.bars.zero}%`; track.append(bar, zero);
+            }
+            const value = document.createElement("span"); value.className = "metric-value";
+            value.textContent = SnapshotComparison.format(metric[key], metric.field);
+            pair.append(caption, track, value); card.append(pair);
+          });
+          const change = document.createElement("p");
+          change.textContent = `差值 ${SnapshotComparison.format(metric.delta, metric.field, true)}${metric.status ? ` · ${metric.status}` : ""}`;
+          card.append(change); cards.append(card);
+        });
+    }
+
     function renderSnapshotComparison() {
       const scope = `${state.activeMode}:${state.activeSheet}`;
       const columns = getSheetConfig().columns.filter((column) => numericSnapshotFields.has(column.field));
@@ -748,6 +814,8 @@
       snapshotMetricEl.replaceChildren(...columns.map((column) => new Option(column.label, column.field)));
       snapshotMetricEl.value = comparisonMetrics[scope] || (state.activeSheet === "hitters" ? "hr" : "era");
       const snapshot = comparisonSnapshots[state.activeMode];
+      const linked = snapshot && LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
+      renderPlayerOverview(snapshot && { ...snapshot, data: linked }, columns, scope);
       document.querySelector("#clearSnapshot").disabled = !snapshot;
       document.querySelector("#downloadComparison").disabled = !snapshot;
       document.querySelector("#comparisonDownloadStatus").textContent = "";
@@ -760,7 +828,6 @@
         return;
       }
       const field = snapshotMetricEl.value;
-      const linked = LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
       const rows = SnapshotComparison.compare(getActivePlayers(), linked.sheets[state.activeSheet], field);
       const comparable = rows.filter((row) => !row.status).length;
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;

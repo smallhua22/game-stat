@@ -105,6 +105,26 @@ const SnapshotComparison = (() => {
     return "\ufeff" + [header.map((v) => cell(v)).join(","), ...rows.map((row) =>
       [...metadata.map((v) => cell(v)), ...row.map((v, i) => cell(v, i === 0 || i === 4))].join(","))].join("\r\n") + "\r\n";
   }
-  return { validate, value, format, compare, csv };
+  // Independent scales keep unlike units out of a misleading combined/radar score.
+  function profile(current, earlier, index, columns) {
+    if (!Number.isInteger(index) || index < 0 || index >= current.length) return [];
+    return columns.map(({ field, label }) => {
+      const row = compare(current, earlier, field)[index];
+      let bars = null;
+      if (!row.status && [row.before, row.after, row.delta].every(Number.isFinite)) {
+        const before = Number(row.before.toFixed(3)), after = Number(row.after.toFixed(3));
+        const min = Math.min(0, before, after), max = Math.max(0, before, after);
+        const magnitude = Math.max(Math.abs(min), Math.abs(max)) || 1;
+        const low = min / magnitude, span = max / magnitude - low || 1;
+        const position = (value) => (value / magnitude - low) / span * 100;
+        const zero = position(0);
+        const bar = (value) => ({ left: Math.min(zero, position(value)), width: Math.abs(position(value) - zero) });
+        bars = { zero, before: bar(before), after: bar(after) };
+      }
+      return { field, label, ...row, bars, status: row.status ||
+        (row.delta !== null && !Number.isFinite(row.delta) ? "差值超出可計算範圍" : "") };
+    });
+  }
+  return { validate, value, format, compare, csv, profile };
 })();
 if (typeof module !== "undefined") module.exports = SnapshotComparison;
