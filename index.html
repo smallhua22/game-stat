@@ -515,6 +515,12 @@
         <div class="snapshot-tools">
           <button type="button" id="loadSnapshot">選擇較早快照</button>
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
+          <label for="snapshotOrder">差值排序</label>
+          <select id="snapshotOrder" disabled aria-label="比較差值排序">
+            <option value="original">原始順序</option>
+            <option value="descending">差值由大到小</option>
+            <option value="ascending">差值由小到大</option>
+          </select>
           <label for="snapshotMetric">比較欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
           <button type="button" id="linkSnapshot" disabled>配對舊快照選手</button>
@@ -735,6 +741,8 @@
     const snapshotMetricEl = document.querySelector("#snapshotMetric");
     const snapshotStatusEl = document.querySelector("#snapshotStatus");
     const snapshotRowsEl = document.querySelector("#snapshotRows");
+    const comparisonOrders = {};
+    const snapshotOrderEl = document.querySelector("#snapshotOrder");
     const numericSnapshotFields = new Set([
       "age", "velocity", "currentSpirit", "trainableSpirit", "maxSpirit",
       "pa", "ab", "hr", "rbi", "sb", "k", "bb", "gp", "ip", "era", "whip", "fip",
@@ -747,6 +755,8 @@
       if (state.activeSheet === "hitters") columns.push(...["avg", "obp", "slg"].map((field) => ({ field, label: field.toUpperCase() })));
       snapshotMetricEl.replaceChildren(...columns.map((column) => new Option(column.label, column.field)));
       snapshotMetricEl.value = comparisonMetrics[scope] || (state.activeSheet === "hitters" ? "hr" : "era");
+      snapshotOrderEl.value = comparisonOrders[scope] || "original";
+      snapshotOrderEl.disabled = !comparisonSnapshots[state.activeMode];
       const snapshot = comparisonSnapshots[state.activeMode];
       document.querySelector("#clearSnapshot").disabled = !snapshot;
       document.querySelector("#downloadComparison").disabled = !snapshot;
@@ -763,6 +773,16 @@
       const linked = LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
       const rows = SnapshotComparison.compare(getActivePlayers(), linked.sheets[state.activeSheet], field);
       const comparable = rows.filter((row) => !row.status).length;
+      // Sort only these newly computed display rows, never the editable player arrays.
+      if (snapshotOrderEl.value !== "original") {
+        const direction = snapshotOrderEl.value === "ascending" ? 1 : -1;
+        rows.sort((a, b) => {
+          const aKnown = !a.status && Number.isFinite(a.delta);
+          const bKnown = !b.status && Number.isFinite(b.delta);
+          if (aKnown !== bKnown) return aKnown ? -1 : 1;
+          return aKnown ? direction * (Number(a.delta.toFixed(3)) - Number(b.delta.toFixed(3))) : 0;
+        });
+      }
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
       const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";
       snapshotStatusEl.textContent = `${snapshot.name}（${dateLabel}）｜${comparable} 位可比較，${rows.length - comparable} 位無法比較。`;
@@ -795,6 +815,10 @@
         if (comparisonLoads[mode] !== generation || state.activeMode !== mode) return;
         snapshotStatusEl.textContent = `無法比較：${error instanceof SyntaxError ? "JSON 格式不正確。" : error.message}`;
       }
+    });
+    snapshotOrderEl.addEventListener("change", () => {
+      comparisonOrders[`${state.activeMode}:${state.activeSheet}`] = snapshotOrderEl.value;
+      renderSnapshotComparison();
     });
     snapshotMetricEl.addEventListener("change", () => {
       comparisonMetrics[`${state.activeMode}:${state.activeSheet}`] = snapshotMetricEl.value;

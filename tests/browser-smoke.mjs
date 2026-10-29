@@ -216,6 +216,45 @@ try {
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
   assert.deepEqual(errors, []);
+  for (const mode of ['pawapuro', 'prospi']) {
+    await page.locator('#modeSelect').selectOption(mode);
+    await page.waitForFunction((mode) => JSON.parse(document.querySelector('#outputText').value).mode === mode, mode);
+    const make = (name, value) => ({ name, hr: value, era: value, ip: value });
+    const current = { schemaVersion: 2, mode, sheets: {
+      hitters: [make('Ten', '13'), make('Two', '5'), make('Negative', '1'), make('Missing', '')],
+      pitchers: [make('Ten', '13'), make('Two', '5'), make('Negative', '1'), make('Missing', '')]
+    } };
+    await upload('#jsonFile', current, 'sorting-data.json');
+    if (await page.locator('#confirmImport').count()) await page.locator('#confirmImport').click();
+    await page.waitForFunction(() => JSON.parse(document.querySelector('#outputText').value).sheets.hitters[0].name === 'Ten');
+    // Flush the normal import save before measuring read-only ordering interactions.
+    await page.waitForTimeout(1200);
+    const earlier = structuredClone(current);
+    for (const rows of Object.values(earlier.sheets)) rows.forEach((row) => { row.hr = '3'; row.era = '3'; row.ip = '3'; });
+    await upload('#snapshotFile', earlier, 'sorting-baseline.json');
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('sorting-baseline.json'));
+    for (const sheet of ['hitters', 'pitchers']) {
+      await page.locator(`#${sheet}Tab`).click();
+      await page.waitForTimeout(1200); // Flush the normal sheet-switch save, not a sorting write.
+      const writes = await page.evaluate(() => window.qaWrites.length);
+      const original = await output();
+      const names = () => page.locator('#snapshotRows tr td:first-child').allTextContents();
+      await page.locator('#snapshotOrder').selectOption('descending');
+      assert.deepEqual(await names(), ['Ten', 'Two', 'Negative', 'Missing']);
+      await page.locator('#snapshotOrder').selectOption('ascending');
+      assert.deepEqual(await names(), ['Negative', 'Two', 'Ten', 'Missing']);
+      await page.screenshot({ path: `browser-artifacts/${mode}-${sheet}-delta-sort.png`, fullPage: true });
+      await page.locator('#snapshotOrder').selectOption('original');
+      assert.deepEqual(await names(), ['Ten', 'Two', 'Negative', 'Missing']);
+      assert.deepEqual(await output(), original);
+      await page.waitForTimeout(1200);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writes);
+    }
+    await page.locator('#clearSnapshot').click();
+    assert.equal(await page.locator('#snapshotOrder').isDisabled(), true);
+    console.log(`PASS ${mode}: numeric delta ordering, unknowns last, reset, unchanged exports and no sort-triggered saves`);
+  }
+  assert.deepEqual(errors, []);
   console.log(`PASS real Chromium ${browser.version()}; isolated backend, no local-computer dependency`);
 } catch (error) {
   if (page) await page.screenshot({ path: 'browser-artifacts/failure.png', fullPage: true }).catch(() => {});

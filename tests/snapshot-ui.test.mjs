@@ -47,6 +47,67 @@ function harness() {
   return { el, state, players, run, render, upload, clear: () => el("#clearSnapshot").listeners.click() };
 }
 
+test("delta ordering is numeric, stable, reversible, and leaves data untouched", async () => {
+  const h = harness();
+  h.players.hitters = [
+    { name: "Ten", hr: "13" }, { name: "Two", hr: "5" }, { name: "Negative", hr: "1" },
+    { name: "Tie", hr: "5" }, { name: "Missing", hr: "" }, { name: "New", hr: "9" }
+  ];
+  const data = snapshot();
+  data.sheets.hitters = h.players.hitters.slice(0, 5).map((p) => ({ name: p.name, hr: "3" }));
+  data.sheets.hitters.push({ name: "Removed", hr: "8" });
+  const original = JSON.stringify(h.players);
+  assert.equal(h.el("#snapshotOrder").disabled, true);
+  await h.upload(data);
+  const names = () => h.el("#snapshotRows").children.map((row) => row.children[0].textContent);
+  const order = (value) => { h.el("#snapshotOrder").value = value; h.el("#snapshotOrder").listeners.change(); };
+  order("descending");
+  assert.deepEqual(names(), ["Ten", "Two", "Tie", "Negative", "Missing", "New", "Removed"]);
+  order("ascending");
+  assert.deepEqual(names(), ["Negative", "Two", "Tie", "Ten", "Missing", "New", "Removed"]);
+  order("original");
+  assert.deepEqual(names(), ["Ten", "Two", "Negative", "Tie", "Missing", "New", "Removed"]);
+  assert.equal(JSON.stringify(h.players), original);
+  assert.equal(h.run("JSON.stringify(comparisonSnapshots.pawapuro.data)"), JSON.stringify(data));
+});
+
+test("ordering follows metric edits, uses displayed precision, and is scoped by mode and sheet", async () => {
+  const h = harness();
+  h.players.hitters = [{ name: "A", hr: "3.0004", slashLine: ".2/.3/.4" },
+    { name: "B", hr: "3.0001", slashLine: ".4/.5/.6" }];
+  h.players.pitchers = [{ name: "P", ip: "11.1", era: "3" }, { name: "Q", ip: "10.2", era: "1" }];
+  const data = snapshot();
+  data.sheets.hitters = [{ name: "A", hr: "3", slashLine: ".3/.3/.4" },
+    { name: "B", hr: "3", slashLine: ".3/.5/.6" }];
+  data.sheets.pitchers = [{ name: "P", ip: "10.2", era: "3" }, { name: "Q", ip: "10.1", era: "3" }];
+  await h.upload(data);
+  const names = () => h.el("#snapshotRows").children.map((row) => row.children[0].textContent);
+  const change = (id, value) => { h.el(id).value = value; h.el(id).listeners.change(); };
+  change("#snapshotOrder", "ascending");
+  assert.deepEqual(names(), ["A", "B"]); // Both display as zero; retain source order.
+  change("#snapshotMetric", "avg");
+  assert.deepEqual(names(), ["A", "B"]);
+  h.players.hitters[0].slashLine = ".9/.3/.4";
+  h.render();
+  assert.deepEqual(names(), ["B", "A"]);
+  h.state.activeSheet = "pitchers"; h.render();
+  assert.equal(h.el("#snapshotOrder").value, "original");
+  change("#snapshotMetric", "ip"); change("#snapshotOrder", "descending");
+  assert.deepEqual(names(), ["P", "Q"]); // +2 outs before +1 out.
+  change("#snapshotOrder", "ascending");
+  assert.deepEqual(names(), ["Q", "P"]);
+  h.state.activeMode = "prospi"; h.render();
+  assert.equal(h.el("#snapshotOrder").value, "original");
+  assert.equal(h.el("#snapshotOrder").disabled, true);
+  h.state.activeMode = "pawapuro"; h.state.activeSheet = "hitters"; h.render();
+  assert.equal(h.el("#snapshotOrder").value, "ascending");
+  h.clear();
+  assert.equal(h.el("#snapshotOrder").disabled, true);
+  await h.upload(data);
+  assert.equal(h.el("#snapshotOrder").value, "ascending");
+});
+
+
 test("real handlers render values, update with edits, switch sheets, and clear without saving", async () => {
   const h = harness();
   assert.equal(h.el("#snapshotMetric").disabled, true);
