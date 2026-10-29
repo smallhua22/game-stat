@@ -25,10 +25,11 @@ function harness() {
   };
   const state = { activeMode: "pawapuro", activeSheet: "hitters" };
   const players = { hitters: [{ name: "A", hr: "8" }], pitchers: [{ name: "P", ip: "11.1", era: "3" }] };
+  const modeData = { sheets: players, legacyLinks: {} };
   const context = vm.createContext({ document: { querySelector: el, createElement: node }, state,
     rowsEl: el("#rows"), outputEl: el("#output"), updateComputedCells() {}, saveState() {},
     buildExport: () => ({ sheets: players }),
-    LegacyLinking: linking, crypto: webcrypto, TextEncoder, getActiveModeData: () => ({ sheets: players }),
+    LegacyLinking: linking, crypto: webcrypto, TextEncoder, getActiveModeData: () => modeData,
     SnapshotComparison: comparison, modes: { pawapuro: { label: "Pawapuro" }, prospi: { label: "Prospi" } },
     Option: function (label, value) { return { label, value }; },
     getSheetConfig: () => ({ columns: ["hr", "era", "ip"].map((field) => ({ field, label: field })) }),
@@ -44,7 +45,7 @@ function harness() {
     return el("#snapshotFile").listeners.change();
   };
   render();
-  return { el, state, players, run, render, upload, clear: () => el("#clearSnapshot").listeners.click() };
+  return { el, state, players, modeData, run, render, upload, clear: () => el("#clearSnapshot").listeners.click() };
 }
 
 test("real handlers render values, update with edits, switch sheets, and clear without saving", async () => {
@@ -149,4 +150,46 @@ test("pending reads retain their mode without changing another mode's comparison
   h.state.activeMode = "pawapuro";
   h.render();
   assert.match(h.el("#snapshotStatus").textContent, /earlier.json/);
+});
+
+test("performance chart follows real metric/edit/mode/sheet handlers and clear", async () => {
+  const h = harness();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  const original = JSON.stringify(h.players);
+  await h.upload(snapshot());
+  assert.equal(h.el("#performanceChart").hidden, false);
+  let item = h.el("#performanceRows").children[0];
+  assert.equal(item.children[0].textContent, "A · 差值 +5");
+  assert.equal(item.children[1].children[2].textContent, "3");
+  assert.equal(item.children[2].children[2].textContent, "8");
+  assert.equal(JSON.stringify(h.players), original);
+  h.players.hitters[0].hr = ""; h.render();
+  assert.equal(h.el("#performanceRows").children.length, 0);
+  assert.match(h.el("#performanceScale").textContent, /沒有可繪圖/);
+  h.state.activeSheet = "pitchers"; h.render();
+  h.el("#snapshotMetric").value = "ip"; h.el("#snapshotMetric").listeners.change();
+  item = h.el("#performanceRows").children[0];
+  assert.equal(item.children[0].textContent, "P · 差值 +0.2");
+  assert.match(h.el("#performanceScale").textContent, /長度依出局數/);
+  h.state.activeMode = "prospi"; h.render();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  assert.equal(h.el("#performanceRows").children.length, 0);
+  await h.upload(snapshot("3", "prospi"));
+  assert.equal(h.el("#performanceChart").hidden, false);
+  h.clear();
+  assert.equal(h.el("#performanceChart").hidden, true);
+  assert.equal(h.el("#performanceRows").children.length, 0);
+});
+
+
+test("chart and detail table reuse saved legacy links after a player rename", async () => {
+  const h = harness(), old = snapshot();
+  const id = "11111111-1111-4111-8111-111111111111";
+  h.players.hitters[0].rowId = id;
+  h.players.hitters[0].name = "Renamed";
+  h.modeData.legacyLinks[await linking.key(old)] = { hitters: [id], pitchers: ["22222222-2222-4222-8222-222222222222"] };
+  await h.upload(old);
+  assert.equal(h.el("#performanceRows").children[0].children[0].textContent, "Renamed · 差值 +5");
+  assert.deepEqual(h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent),
+    ["Renamed", "3", "8", "+5", "可比較"]);
 });

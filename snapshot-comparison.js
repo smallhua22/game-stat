@@ -90,6 +90,20 @@ const SnapshotComparison = (() => {
     });
     return rows;
   }
+  // A shared zero-inclusive scale, normalized first to avoid extreme-value overflow.
+  function chart(rows) {
+    const points = rows.filter((row) => !row.status &&
+      [row.before, row.after, row.delta].every(Number.isFinite)).map((row) => ({ ...row,
+        before: Number(row.before.toFixed(3)), after: Number(row.after.toFixed(3)) }));
+    let min = 0, max = 0;
+    points.forEach((row) => { min = Math.min(min, row.before, row.after); max = Math.max(max, row.before, row.after); });
+    const magnitude = Math.max(Math.abs(min), Math.abs(max)) || 1;
+    const low = min / magnitude, span = max / magnitude - low || 1;
+    const position = (value) => (value / magnitude - low) / span * 100;
+    const zero = position(0);
+    const bar = (value) => ({ left: Math.min(zero, position(value)), width: Math.abs(position(value) - zero) });
+    return { min, max, zero, points: points.map((row) => ({ row, before: bar(row.before), after: bar(row.after) })) };
+  }
   // Export displayed comparison rows, not an importable data backup.
   function csv(rows, context) {
     const cell = (value, protect = true) => {
@@ -105,6 +119,6 @@ const SnapshotComparison = (() => {
     return "\ufeff" + [header.map((v) => cell(v)).join(","), ...rows.map((row) =>
       [...metadata.map((v) => cell(v)), ...row.map((v, i) => cell(v, i === 0 || i === 4))].join(","))].join("\r\n") + "\r\n";
   }
-  return { validate, value, format, compare, csv };
+  return { validate, value, format, compare, chart, csv };
 })();
 if (typeof module !== "undefined") module.exports = SnapshotComparison;

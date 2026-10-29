@@ -39,6 +39,18 @@ show a metric before downloading a snapshot if you want to compare it later, or 
 of current column visibility. Raw numeric fields and AVG/OBP/SLG are supported; letter grades, free text,
 and computed columns are excluded.
 
+### Visual performance comparison
+
+The paired bars above the detail table show the earlier snapshot and current value for each comparable
+player, using the selected metric. Every row shares a scale including zero; negative values extend left
+of the zero line. The scale is recalculated when the metric or data changes, so compare lengths within
+one chart, not between different views. Values and signed changes are printed; colour is not the only cue.
+IP lengths use outs, while labels keep baseball notation. Values use the table's three-decimal precision.
+Missing/invalid/unmatched rows are counted but not drawn as zero; the detail table keeps their reasons.
+The scrollable chart includes all comparable rows. It updates with unsynced edits without saving anything.
+This is a two-version comparison, not a time-series trend or a judgment that larger numbers are better.
+Saved named snapshots and multi-date history remain separate future work.
+
 ### Tests
 
 Run `node --test tests/*.test.mjs` from the project root. Tests use Node's built-in runner with no package
@@ -86,6 +98,16 @@ IP 輸入與顯示均使用棒球記法：`10.2` 表示 10 局又 2 個出局數
 若要日後比較某欄位，請在下載快照前將它顯示，或使用[完整備份](full-data-backup.md)保留隱藏的儲存欄位。
 成長比較本身不受目前欄位顯示設定影響。
 目前支援原始數值欄位及 AVG／OBP／SLG，不包含字母評價、自由文字和計算欄位。
+
+### 視覺化表現比較
+
+明細表上方以成對長條呈現每位可比較選手的較早快照與目前數值，使用已選欄位。
+所有列共用包含零的刻度；負值往零線左側延伸。切換欄位或資料後會重新計算刻度，
+因此只比較同一張圖內的長度，不跨不同畫面比較。數值與正負差值均有文字，不只依賴顏色。
+IP 長度依出局數計算，標籤保留棒球記法；數值沿用明細表最多三位小數的精度。
+缺值、無效或未配對列只計數、不畫成零，原因仍保留於明細表。圖可捲動，包含所有可比較列，
+隨尚未同步的編輯更新，不新增儲存。這是兩版本比較，並非時間序列趨勢，也不判斷數字越大越好。
+具名快照及多日期歷史仍是獨立的未來工作。
 
 ### 測試
 

@@ -196,6 +196,7 @@ try {
     await page.locator('#saveLinks').click();
     await page.locator('#linkDialog').waitFor({ state: 'hidden' });
     assert.match(await page.locator('#snapshotRows tr').nth(1).innerText(), /\+2\s+可比較/);
+    assert.match(await page.locator('#performanceRows').innerText(), /差值 \+2/);
     const savedLinks = await page.evaluate((mode) => JSON.parse(localStorage.getItem('qaTables'))[mode].legacyLinks, mode);
     assert.equal(Object.keys(savedLinks).length, 1);
     await page.reload();
@@ -204,15 +205,53 @@ try {
     await upload('#snapshotFile', historical, 'same-data-new-name.json');
     await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('same-data-new-name.json'));
     assert.match(await page.locator('#snapshotRows tr').nth(1).innerText(), /\+2\s+可比較/);
+    assert.match(await page.locator('#performanceRows').innerText(), /差值 \+2/);
     await page.locator('#linkSnapshot').click();
     assert.equal(await choices.nth(0).inputValue(), exported.sheets.hitters[1].rowId);
     assert.equal(await choices.nth(1).inputValue(), Object.values(savedLinks)[0].hitters[1]);
     await page.keyboard.press('Escape');
     await page.locator('#linkDialog').waitFor({ state: 'hidden' });
+    for (const sheet of ['hitters', 'pitchers']) {
+      await page.locator(`#${sheet}Tab`).click();
+      const field = sheet === 'hitters' ? 'hr' : 'ip';
+      const current = sheet === 'hitters' ? ['8', '-2', ''] : ['11.1', '0', ''];
+      for (let i = 0; i < 3; i++) {
+        await page.locator(`#rows tr:nth-child(${i + 1}) [data-field="${field}"]`).fill(current[i]);
+      }
+      await page.locator('#rows tr').first().locator('[data-field="name"]').fill('長姓名 Long player name / ' + '測試'.repeat(25));
+      await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing');
+      const baseline = await output();
+      baseline.sheets[sheet].forEach((row, i) => { row[field] = sheet === 'hitters' ? ['3', '-4', '0'][i] : ['10.2', '0', '0'][i]; });
+      await upload('#snapshotFile', baseline, 'chart.json');
+      await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('chart.json'));
+      await page.locator('#snapshotMetric').selectOption(field);
+      assert.equal(await page.locator('#performanceRows li').count(), 2);
+      assert.match(await page.locator('#performanceScale').innerText(), /2 位已繪圖，1 位無法繪圖/);
+      assert.match(await page.locator('#performanceRows li').first().innerText(), sheet === 'hitters' ? /差值 \+5/ : /差值 \+0.2/);
+      const bars = await page.locator('#performanceRows li').first().locator('.performance-bar').evaluateAll((els) => els.map((el) => parseFloat(el.style.width)));
+      const ratio = sheet === 'hitters' ? 3 / 8 : 32 / 34;
+      assert.ok(Math.abs(bars[0] / bars[1] - ratio) < .0001);
+      // Allow existing editing/tab autosave to finish before checking read-only rerenders.
+      await page.waitForTimeout(1200);
+      const dataBefore = await output();
+      const writesBefore = await page.evaluate(() => window.qaWrites.length);
+      await page.locator('#snapshotMetric').selectOption(sheet === 'hitters' ? 'avg' : 'era');
+      await page.locator('#snapshotMetric').selectOption(field);
+      await page.waitForTimeout(1200);
+      assert.deepEqual(await output(), dataBefore);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writesBefore);
+      await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart.png` });
+      await page.setViewportSize({ width: 390, height: 844 });
+      const fits = await page.locator('#performanceChart').evaluate((el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth);
+      assert.equal(fits, true);
+      await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart-mobile.png` });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
     assert.equal(await page.locator('#downloadComparison').isDisabled(), true);
+    assert.equal(await page.locator('#performanceChart').isVisible(), false);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
   assert.deepEqual(errors, []);
