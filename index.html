@@ -439,6 +439,8 @@
     .performance-bar { position: absolute; height: 100%; background: #64748b; }
     .performance-bar.current { background: #2563eb; }
     .performance-zero { position: absolute; height: 16px; top: -2px; border-left: 1px solid #172033; }
+    .performance-change { border-top: 1px dashed var(--line); padding-top: 5px; }
+    .performance-bar.change { background: #475569; }
     .performance-value { text-align: right; overflow-wrap: anywhere; }
 
     .snapshot-results caption { text-align: left; padding: 8px; font-size: 13px; }
@@ -545,6 +547,7 @@
         <section id="performanceChart" class="performance-chart" aria-labelledby="performanceTitle" hidden>
           <h3 id="performanceTitle">選手表現比較</h3>
           <p id="performanceScale"></p>
+          <p id="changeScale"></p>
           <ol id="performanceRows" tabindex="0" aria-label="選手表現圖，可捲動"></ol>
         </section>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
@@ -760,13 +763,17 @@
 
     function renderPerformanceChart(rows, field, label) {
       const chart = SnapshotComparison.chart(rows);
+      const changes = SnapshotComparison.changes(rows);
       const list = document.querySelector("#performanceRows");
       list.replaceChildren();
       document.querySelector("#performanceTitle").textContent = `${label}｜選手表現比較`;
       document.querySelector("#performanceScale").textContent = chart.points.length
         ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 位已繪圖，${rows.length - chart.points.length} 位無法繪圖（詳見下表）。長條不代表表現好壞。`
         : "沒有可繪圖的配對數值；缺值不當作零，詳見下表。";
-      chart.points.forEach((point) => {
+      document.querySelector("#changeScale").textContent = changes.points.length
+        ? `差值另用對稱刻度 ${SnapshotComparison.format(-changes.extent, field, true)} 至 ${SnapshotComparison.format(changes.extent, field, true)}；中央為 0，向左減少、向右增加。只比較差值列的長度，不與上方數值長條比較；正負不代表優劣。`
+        : "";
+      chart.points.forEach((point, index) => {
         const item = document.createElement("li");
         const name = document.createElement("strong");
         name.textContent = `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}`;
@@ -785,6 +792,17 @@
           value.textContent = SnapshotComparison.format(point.row[key], field);
           series.append(caption, track, value); item.append(series);
         });
+        const change = changes.points[index];
+        const series = document.createElement("div"); series.className = "performance-series performance-change";
+        const caption = document.createElement("span"); caption.textContent = "差值（另尺）";
+        const track = document.createElement("span"); track.className = "performance-track";
+        const bar = document.createElement("span"); bar.className = "performance-bar change";
+        bar.style = `left:${change.left}%;width:${change.width}%`;
+        const zero = document.createElement("span"); zero.className = "performance-zero"; zero.style = "left:50%";
+        track.append(bar, zero);
+        const value = document.createElement("span"); value.className = "performance-value";
+        value.textContent = SnapshotComparison.format(change.row.delta, field, true);
+        series.append(caption, track, value); item.append(series);
         list.append(item);
       });
     }

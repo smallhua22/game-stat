@@ -214,14 +214,14 @@ try {
     for (const sheet of ['hitters', 'pitchers']) {
       await page.locator(`#${sheet}Tab`).click();
       const field = sheet === 'hitters' ? 'hr' : 'ip';
-      const current = sheet === 'hitters' ? ['8', '-2', ''] : ['11.1', '0', ''];
+      const current = sheet === 'hitters' ? ['8', '-6', ''] : ['11.1', '0', ''];
       for (let i = 0; i < 3; i++) {
         await page.locator(`#rows tr:nth-child(${i + 1}) [data-field="${field}"]`).fill(current[i]);
       }
       await page.locator('#rows tr').first().locator('[data-field="name"]').fill('長姓名 Long player name / ' + '測試'.repeat(25));
       await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing');
       const baseline = await output();
-      baseline.sheets[sheet].forEach((row, i) => { row[field] = sheet === 'hitters' ? ['3', '-4', '0'][i] : ['10.2', '0', '0'][i]; });
+      baseline.sheets[sheet].forEach((row, i) => { row[field] = sheet === 'hitters' ? ['3', '-4', '0'][i] : ['10.2', '10.2', '0'][i]; });
       await upload('#snapshotFile', baseline, 'chart.json');
       await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('chart.json'));
       await page.locator('#snapshotMetric').selectOption(field);
@@ -231,6 +231,18 @@ try {
       const bars = await page.locator('#performanceRows li').first().locator('.performance-bar').evaluateAll((els) => els.map((el) => parseFloat(el.style.width)));
       const ratio = sheet === 'hitters' ? 3 / 8 : 32 / 34;
       assert.ok(Math.abs(bars[0] / bars[1] - ratio) < .0001);
+      const changes = page.locator('#performanceRows .performance-change');
+      assert.equal(await changes.count(), 2);
+      const geometry = await changes.locator('.change').evaluateAll((els) => els.map((el) =>
+        [parseFloat(el.style.left), parseFloat(el.style.width)]));
+      assert.deepEqual(geometry, sheet === 'hitters' ? [[50, 50], [30, 20]] : [[50, 3.125], [0, 50]]);
+      assert.match(await changes.nth(1).innerText(), sheet === 'hitters' ? /−2/ : /−10.2/);
+      assert.match(await page.locator('#changeScale').innerText(), /另用對稱刻度.*中央為 0/);
+      assert.deepEqual(await changes.locator('.performance-zero').evaluateAll((els) => els.map((el) => el.style.left)), ['50%', '50%']);
+      // Zero has no invented positive/negative length. Restore the first value for screenshots.
+      await page.locator(`#rows tr:first-child [data-field="${field}"]`).fill(sheet === 'hitters' ? '3' : '10.2');
+      assert.equal(await changes.first().locator('.change').evaluate((el) => el.style.width), '0%');
+      await page.locator(`#rows tr:first-child [data-field="${field}"]`).fill(current[0]);
       // Allow existing editing/tab autosave to finish before checking read-only rerenders.
       await page.waitForTimeout(1200);
       const dataBefore = await output();
