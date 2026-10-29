@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import linking from "../legacy-linking.js";
+import { webcrypto } from "node:crypto";
 import comparison from "../snapshot-comparison.js";
 
 // Run the real comparison handlers/rendering with a minimal in-memory DOM.
@@ -23,9 +25,11 @@ function harness() {
   };
   const state = { activeMode: "pawapuro", activeSheet: "hitters" };
   const players = { hitters: [{ name: "A", hr: "8" }], pitchers: [{ name: "P", ip: "11.1", era: "3" }] };
+  const modeData = { sheets: players, legacyLinks: {} };
   const context = vm.createContext({ document: { querySelector: el, createElement: node }, state,
     rowsEl: el("#rows"), outputEl: el("#output"), updateComputedCells() {}, saveState() {},
     buildExport: () => ({ sheets: players }),
+    LegacyLinking: linking, crypto: webcrypto, TextEncoder, getActiveModeData: () => modeData,
     SnapshotComparison: comparison, modes: { pawapuro: { label: "Pawapuro" }, prospi: { label: "Prospi" } },
     Option: function (label, value) { return { label, value }; },
     getSheetConfig: () => ({ columns: ["hr", "era", "ip"].map((field) => ({ field, label: field })) }),
@@ -41,7 +45,7 @@ function harness() {
     return el("#snapshotFile").listeners.change();
   };
   render();
-  return { el, state, players, run, render, upload, clear: () => el("#clearSnapshot").listeners.click() };
+  return { el, state, players, modeData, run, render, upload, clear: () => el("#clearSnapshot").listeners.click() };
 }
 
 test("real handlers render values, update with edits, switch sheets, and clear without saving", async () => {
@@ -175,4 +179,17 @@ test("performance chart follows real metric/edit/mode/sheet handlers and clear",
   h.clear();
   assert.equal(h.el("#performanceChart").hidden, true);
   assert.equal(h.el("#performanceRows").children.length, 0);
+});
+
+
+test("chart and detail table reuse saved legacy links after a player rename", async () => {
+  const h = harness(), old = snapshot();
+  const id = "11111111-1111-4111-8111-111111111111";
+  h.players.hitters[0].rowId = id;
+  h.players.hitters[0].name = "Renamed";
+  h.modeData.legacyLinks[await linking.key(old)] = { hitters: [id], pitchers: ["22222222-2222-4222-8222-222222222222"] };
+  await h.upload(old);
+  assert.equal(h.el("#performanceRows").children[0].children[0].textContent, "Renamed · 差值 +5");
+  assert.deepEqual(h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent),
+    ["Renamed", "3", "8", "+5", "可比較"]);
 });

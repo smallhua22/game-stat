@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 const root = new URL('../', import.meta.url);
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
-  if (!['/', '/index.html', '/row-identity.js', '/snapshot-comparison.js'].includes(path)) {
+  if (!['/', '/index.html', '/row-identity.js', '/snapshot-comparison.js', '/legacy-linking.js'].includes(path)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', path.endsWith('.js') ? 'text/javascript' : 'text/html');
