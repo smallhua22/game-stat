@@ -15,7 +15,7 @@ const snapshot = (hr = "3", mode = "pawapuro") => ({ schemaVersion: 2, mode,
 
 function harness() {
   const elements = new Map();
-  const node = () => ({ listeners: {}, children: [], value: "",
+  const node = () => ({ listeners: {}, children: [], value: "", style: {},
     addEventListener(type, fn) { this.listeners[type] = fn; },
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; } });
@@ -149,4 +149,27 @@ test("pending reads retain their mode without changing another mode's comparison
   h.state.activeMode = "pawapuro";
   h.render();
   assert.match(h.el("#snapshotStatus").textContent, /earlier.json/);
+});
+
+
+test("distribution follows full comparison rows, edits, mode/sheet changes and clear", async () => {
+  const h = harness();
+  const counts = () => h.el("#changeCounts").children.map((item) => item.children[1].textContent);
+  assert.equal(h.el("#changeSummary").hidden, true);
+  await h.upload(snapshot());
+  assert.equal(h.el("#changeSummary").hidden, false);
+  assert.deepEqual(counts(), ["1", "0", "0", "0"]);
+  h.players.hitters[0].hr = "3.0001"; h.render();
+  assert.deepEqual(counts(), ["0", "1", "0", "0"]);
+  h.players.hitters.push({ name: "New", hr: "2" }); h.render();
+  assert.deepEqual(counts(), ["0", "1", "0", "1"]);
+  assert.match(h.el("#changeSummaryNote").textContent, /未配對 1/);
+  h.state.activeSheet = "pitchers"; h.render();
+  assert.deepEqual(counts(), ["0", "0", "1", "0"]);
+  h.el("#snapshotMetric").value = "ip"; h.el("#snapshotMetric").listeners.change();
+  assert.deepEqual(counts(), ["1", "0", "0", "0"]);
+  h.state.activeMode = "prospi"; h.render();
+  assert.equal(h.el("#changeSummary").hidden, true);
+  h.state.activeMode = "pawapuro"; h.render(); h.clear();
+  assert.equal(h.el("#changeSummary").hidden, true);
 });

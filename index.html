@@ -427,6 +427,14 @@
     .snapshot-panel p { color: var(--muted); font-size: 13px; }
     #snapshotStatus { overflow-wrap: anywhere; }
     .snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .change-summary { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+    .change-summary h3 { margin: 0 0 10px; font-size: 15px; }
+    .change-meter { display: flex; height: 16px; overflow: hidden; border-radius: 8px; background: #e2e8f0; }
+    .change-meter span { flex-shrink: 0; }
+    .change-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0; list-style: none; }
+    .change-counts li { border-top: 4px solid; padding-top: 6px; }
+    .change-counts strong { display: block; font-size: 24px; }
+    @media (max-width: 600px) { .change-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .snapshot-scroll { max-height: 280px; overflow: auto; margin-top: 12px; }
     .snapshot-results { min-width: 540px; table-layout: auto; }
     .snapshot-results caption { text-align: left; padding: 8px; font-size: 13px; }
@@ -530,6 +538,12 @@
           <p>配對會隨此模式資料同步至帳戶；請確認頁面顯示「已同步至雲端」。失敗時可重新儲存配對。</p>
         </dialog>
         <p id="snapshotStatus" role="status" aria-live="polite"></p>
+        <section id="changeSummary" class="change-summary" aria-labelledby="changeSummaryTitle" hidden>
+          <h3 id="changeSummaryTitle">全表差值分布</h3>
+          <div id="changeMeter" class="change-meter" aria-hidden="true"></div>
+          <ul id="changeCounts" class="change-counts"></ul>
+          <p id="changeSummaryNote"></p>
+        </section>
         <div class="snapshot-scroll" id="snapshotResults" tabindex="0" role="region" aria-label="選手快照比較結果，可捲動" hidden>
           <table class="snapshot-results">
             <caption>目前數值包含畫面上尚未同步的修改；— 表示無法計算，並非零。</caption>
@@ -741,6 +755,27 @@
       "h", "hbp", "w", "l", "hld", "sv"
     ]);
 
+    function renderChangeSummary(rows, label) {
+      const counts = SnapshotComparison.distribution(rows);
+      document.querySelector("#changeSummaryTitle").textContent = `${label}｜全表差值分布`;
+      const meter = document.querySelector("#changeMeter");
+      const list = document.querySelector("#changeCounts");
+      meter.replaceChildren(); list.replaceChildren();
+      [["increase", "增加", "#2563eb"], ["unchanged", "不變", "#64748b"],
+        ["decrease", "減少", "#b45309"], ["unavailable", "無法比較", "#94a3b8"]].forEach(([key, label, color]) => {
+        const segment = document.createElement("span");
+        segment.style.cssText = `width:${counts.total ? counts[key] / counts.total * 100 : 0}%;background:${color}`;
+        meter.append(segment);
+        const item = document.createElement("li"); item.style.borderColor = color;
+        const count = document.createElement("strong"); count.textContent = String(counts[key]);
+        item.append(label, count); list.append(item);
+      });
+      meter.hidden = !counts.total;
+      document.querySelector("#changeSummaryNote").textContent = counts.total
+        ? `全表共 ${counts.total} 筆比較紀錄（含只在快照中的列），不是不重複人數。未配對 ${counts.unmatched} 筆；缺值或無效數值 ${counts.invalid} 筆，詳見下表。依顯示至小數第三位的差值分類；正負不代表優劣。`
+        : "兩份資料皆無紀錄；沒有可統計的變化。";
+    }
+
     function renderSnapshotComparison() {
       const scope = `${state.activeMode}:${state.activeSheet}`;
       const columns = getSheetConfig().columns.filter((column) => numericSnapshotFields.has(column.field));
@@ -755,6 +790,7 @@
       snapshotMetricEl.disabled = !snapshot;
       document.querySelector("#linkSnapshot").disabled = !snapshot || !Object.values(snapshot.data.sheets).some((rows) => rows.some((p) => !p.rowId));
       snapshotRowsEl.replaceChildren();
+      document.querySelector("#changeSummary").hidden = !snapshot;
       if (!snapshot) {
         snapshotStatusEl.textContent = `尚未選擇 ${modes[state.activeMode].label} 快照。`;
         return;
@@ -762,6 +798,7 @@
       const field = snapshotMetricEl.value;
       const linked = LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
       const rows = SnapshotComparison.compare(getActivePlayers(), linked.sheets[state.activeSheet], field);
+      renderChangeSummary(rows, columns.find((column) => column.field === field).label);
       const comparable = rows.filter((row) => !row.status).length;
       const timestamp = typeof snapshot.data.exportedAt === "string" ? Date.parse(snapshot.data.exportedAt) : NaN;
       const dateLabel = Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : "檔案未提供時間";

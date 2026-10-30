@@ -90,6 +90,21 @@ const SnapshotComparison = (() => {
     });
     return rows;
   }
+  // Count comparison records, including baseline-only rows; never imply improvement.
+  function distribution(rows) {
+    const counts = { increase: 0, unchanged: 0, decrease: 0, unavailable: 0,
+      unmatched: 0, invalid: 0, total: rows.length };
+    rows.forEach((row) => {
+      if (row.status || ![row.before, row.after, row.delta].every(Number.isFinite)) {
+        counts.unavailable++;
+        counts[row.status && row.status !== "缺少或無效數值" ? "unmatched" : "invalid"]++;
+      } else {
+        const delta = Number(row.delta.toFixed(3)); // Same precision as displayed differences.
+        counts[delta > 0 ? "increase" : delta < 0 ? "decrease" : "unchanged"]++;
+      }
+    });
+    return counts;
+  }
   // Export displayed comparison rows, not an importable data backup.
   function csv(rows, context) {
     const cell = (value, protect = true) => {
@@ -105,6 +120,6 @@ const SnapshotComparison = (() => {
     return "\ufeff" + [header.map((v) => cell(v)).join(","), ...rows.map((row) =>
       [...metadata.map((v) => cell(v)), ...row.map((v, i) => cell(v, i === 0 || i === 4))].join(","))].join("\r\n") + "\r\n";
   }
-  return { validate, value, format, compare, csv };
+  return { validate, value, format, compare, distribution, csv };
 })();
 if (typeof module !== "undefined") module.exports = SnapshotComparison;
