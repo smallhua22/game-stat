@@ -252,6 +252,11 @@ try {
       await page.waitForTimeout(1200);
       assert.deepEqual(await output(), dataBefore);
       assert.equal(await page.evaluate(() => window.qaWrites.length), writesBefore);
+      // Keep the chart clear of the sticky header when capturing its complete legend.
+      await page.locator('#performanceChart').evaluate((el) => window.scrollBy(0,
+        el.getBoundingClientRect().top - document.querySelector('.topbar').getBoundingClientRect().bottom - 12));
+      assert.ok(await page.locator('#performanceChart').evaluate((el) =>
+        el.getBoundingClientRect().top >= document.querySelector('.topbar').getBoundingClientRect().bottom));
       await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart.png` });
       await page.setViewportSize({ width: 390, height: 844 });
       const fits = await page.locator('#performanceChart').evaluate((el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth);
