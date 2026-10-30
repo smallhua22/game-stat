@@ -101,6 +101,32 @@ try {
       assert.match(file.suggestedFilename(), new RegExp(`^game-stat-${mode}-`));
       return readFile(await file.path(), 'utf8');
     };
+    const summaryCounts = () => page.locator('#changeCounts strong').allTextContents();
+    assert.deepEqual(await summaryCounts(), ['1', '1', '0', '1']);
+    assert.match(await page.locator('#changeSummaryNote').innerText(), /缺值或無效數值 1/);
+    const unchangedData = await output();
+    const distributionBaseline = structuredClone(earlier);
+    distributionBaseline.sheets.hitters[0].hr = '6';
+    await upload('#snapshotFile', distributionBaseline, 'distribution.json');
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('distribution.json'));
+    assert.deepEqual(await summaryCounts(), ['1', '0', '1', '1']);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.locator('#changeSummary').scrollIntoViewIfNeeded();
+      await page.evaluate(() => window.scrollBy(0, -document.querySelector(".topbar").getBoundingClientRect().height - 20));
+      assert.ok(await page.locator("#changeSummary").evaluate((el) =>
+        el.getBoundingClientRect().top >= document.querySelector(".topbar").getBoundingClientRect().bottom));
+      assert.ok(await page.locator('#changeSummary').evaluate((el) => el.scrollWidth <= el.clientWidth));
+      await page.screenshot({ path: `browser-artifacts/${mode}-distribution-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    assert.deepEqual(await output(), unchangedData);
+    await page.waitForTimeout(1200);
+    const summaryWrites = await page.evaluate(() => window.qaWrites.length);
+    await upload('#snapshotFile', earlier);
+    await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('earlier.json'));
+    await page.locator('#snapshotMetric').selectOption('hr');
+    assert.equal(await page.evaluate(() => window.qaWrites.length), summaryWrites);
     const csv = await report();
     assert.ok(csv.startsWith('\ufeff"generated_at_utc"'));
     assert.ok(csv.includes('"Renamed","1","3","+2","可比較"'));
@@ -212,6 +238,7 @@ try {
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
     await page.locator('#clearSnapshot').click();
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
+    assert.equal(await page.locator('#changeSummary').isVisible(), false);
     assert.equal(await page.locator('#downloadComparison').isDisabled(), true);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
