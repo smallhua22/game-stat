@@ -104,6 +104,17 @@ const SnapshotComparison = (() => {
     const bar = (value) => ({ left: Math.min(zero, position(value)), width: Math.abs(position(value) - zero) });
     return { min, max, zero, points: points.map((row) => ({ row, before: bar(row.before), after: bar(row.after) })) };
   }
+  // Changes use their own symmetric scale: equal magnitudes always have equal lengths.
+  function changes(rows) {
+    const points = rows.filter((row) => !row.status &&
+      [row.before, row.after, row.delta].every(Number.isFinite))
+      .map((row) => ({ ...row, delta: Number(row.delta.toFixed(3)) }));
+    const extent = points.reduce((max, row) => Math.max(max, Math.abs(row.delta)), 0);
+    return { extent, points: points.map((row) => {
+      const width = extent ? Math.abs(row.delta) / extent * 50 : 0;
+      return { row, left: row.delta < 0 ? 50 - width : 50, width };
+    }) };
+  }
   // Export displayed comparison rows, not an importable data backup.
   function csv(rows, context) {
     const cell = (value, protect = true) => {
@@ -119,6 +130,6 @@ const SnapshotComparison = (() => {
     return "\ufeff" + [header.map((v) => cell(v)).join(","), ...rows.map((row) =>
       [...metadata.map((v) => cell(v)), ...row.map((v, i) => cell(v, i === 0 || i === 4))].join(","))].join("\r\n") + "\r\n";
   }
-  return { validate, value, format, compare, chart, csv };
+  return { validate, value, format, compare, chart, changes, csv };
 })();
 if (typeof module !== "undefined") module.exports = SnapshotComparison;

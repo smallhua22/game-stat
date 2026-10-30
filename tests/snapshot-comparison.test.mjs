@@ -119,3 +119,22 @@ test("chart handles zero, displayed precision, empty sets and extreme finite num
   assert.equal(ip.points[0].row.before, 32); assert.equal(ip.points[0].row.after, 34);
   assert.equal(comparison.format(ip.points[0].row.delta, "ip", true), "+0.2");
 });
+
+test("change bars compare signed magnitudes independently from large baseline totals", () => {
+  const row = (delta, before = 10000) => ({ before, after: before + delta, delta, status: "" });
+  const rows = [row(2), row(-4), row(0), { ...row(99), status: "missing" }];
+  const original = JSON.stringify(rows);
+  const chart = comparison.changes(rows);
+  assert.equal(chart.extent, 4);
+  assert.deepEqual(chart.points.map(({ left, width }) => [left, width]), [[50, 25], [0, 50], [50, 0]]);
+  assert.equal(JSON.stringify(rows), original);
+  assert.equal(comparison.changes([row(1e308, 0)]).points[0].width, 50);
+  assert.equal(comparison.changes([row(Infinity)]).points.length, 0);
+  assert.equal(comparison.changes([{ ...row(0), before: null }]).points.length, 0);
+  assert.equal(comparison.changes([]).extent, 0);
+  assert.equal(comparison.changes([row(-.0004)]).points[0].width, 0);
+  assert.equal(comparison.format(comparison.changes([row(-.0004)]).points[0].row.delta, "avg", true), "0");
+  const ip = comparison.changes(comparison.compare([{ name: "P", ip: "11.1" }], [{ name: "P", ip: "10.2" }], "ip"));
+  assert.equal(ip.extent, 2);
+  assert.equal(comparison.format(ip.points[0].row.delta, "ip", true), "+0.2");
+});
