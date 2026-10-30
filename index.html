@@ -461,6 +461,8 @@
       .output textarea { min-height: 360px; }
       .table-wrap { max-height: none; }
     }
+    #importPreview { max-width: min(36rem, calc(100vw - 3rem)); border-radius: 12px; border: 1px solid #b7c8d9; padding: 24px; }
+    #importPreview::backdrop { background: #10203099; }
   </style>
 </head>
 <body>
@@ -576,6 +578,13 @@
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </aside>
     </section>
+    <dialog id="importPreview" aria-labelledby="importTitle" aria-describedby="importSummary importWarning">
+      <h2 id="importTitle">確認匯入 JSON</h2>
+      <p id="importSummary"></p>
+      <p id="importWarning">這會取代此模式的打者與投手資料，包含尚未同步的修改，不是合併。檔案缺少的欄位會清空；另一模式與欄位顯示設定不受影響。請先取消並備份需要保留的資料。</p>
+      <button type="button" id="cancelImport" autofocus>取消，保留原有資料</button>
+      <button type="button" id="confirmImport">取代資料並同步</button>
+    </dialog>
   </main>
 
   <script src="row-identity.js"></script>
@@ -1101,9 +1110,24 @@
 
     // Optimistic-lock write (D12): a save based on a stale updated_at is rejected
     // so a second device can't silently clobber the first.
-    async function saveModeToCloud(modeKey, { overwrite = false } = {}) {
+    async function saveModeToCloud(modeKey, options = {}) {
+      const userId = currentUser?.id;
+      if (!userId) return;
+      const source = modeDataCache[modeKey];
+      if (!source) return;
+      const snapshot = JSON.parse(JSON.stringify(source));
+      const queue = saveModeToCloud.queue ||= new Map();
+      const key = `${userId}:${modeKey}`;
+      const next = (queue.get(key) || Promise.resolve()).catch(() => {}).then(() => {
+        if (currentUser?.id === userId && modeDataCache[modeKey] === source) return writeModeToCloud(modeKey, { ...options, source, snapshot });
+      });
+      queue.set(key, next);
+      try { return await next; } finally { if (queue.get(key) === next) queue.delete(key); }
+    }
+
+    async function writeModeToCloud(modeKey, { overwrite = false, source, snapshot } = {}) {
       if (!supabaseClient || !currentUser) return;
-      const modeData = modeDataCache[modeKey];
+      const modeData = snapshot;
       if (!modeData) return;
       const blob = {
         schemaVersion: SCHEMA_VERSION,
@@ -1138,6 +1162,8 @@
             .maybeSingle();
           if (error) throw error;
           if (!data) {
+            // A confirmed import has replaced the editor while this older save waited.
+            if (modeDataCache[modeKey] !== source) return;
             await onStaleConflict(modeKey);
             return;
           }
@@ -1486,25 +1512,57 @@
 
     function importJsonFile(file) {
       if (!file) return;
+      const generation = importJsonFile.generation = (importJsonFile.generation || 0) + 1;
+      const sourceMode = state.activeMode, userId = currentUser?.id;
       const reader = new FileReader();
       reader.addEventListener("load", () => {
+        if (generation !== importJsonFile.generation) return;
         try {
+          if (!userId || userId !== currentUser?.id || sourceMode !== state.activeMode)
+            throw new Error("帳號或模式已變更，請重新選擇檔案。原有資料未變更。");
           const parsed = JSON.parse(String(reader.result));
-          const modeKey = modes[parsed.mode] ? parsed.mode : state.activeMode;
-          modeDataCache[modeKey] = normalizeModeData(modeKey, parsed);
-          state.activeMode = modeKey;
-          state.activeSheet = modeDataCache[modeKey].activeSheet;
-          render();
-          saveModeToCloud(modeKey, { overwrite: true });
-          setStatus(`已匯入 ${modes[modeKey].label} JSON`);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+              (parsed.mode !== undefined && (typeof parsed.mode !== "string" || !Object.hasOwn(modes, parsed.mode))) ||
+              !["hitters", "pitchers"].every((sheet) => Array.isArray(parsed.sheets?.[sheet]) &&
+                parsed.sheets[sheet].every((row) => row && typeof row === "object" && !Array.isArray(row))))
+            throw new Error("檔案須包含有效模式與打者、投手陣列。原有資料未變更。");
+          const modeKey = parsed.mode ?? sourceMode;
+          const data = normalizeModeData(modeKey, parsed);
+          importJsonFile.pending = { modeKey, data, userId, sourceMode };
+          document.querySelector("#importSummary").textContent =
+            `${file.name} → ${modes[modeKey].label}：${data.sheets.hitters.length} 位打者、${data.sheets.pitchers.length} 位投手。`;
+          document.querySelector("#importPreview").showModal();
         } catch (error) {
           console.warn(error);
-          setStatus(error instanceof SyntaxError ? "JSON 格式不正確" : error.message);
+          setStatus(error instanceof SyntaxError ? "JSON 格式不正確，原有資料未變更。" : error.message);
         } finally {
           jsonFileEl.value = "";
         }
       });
+      reader.onerror = () => {
+        if (generation !== importJsonFile.generation) return;
+        jsonFileEl.value = "";
+        setStatus("無法讀取檔案，請重試。原有資料未變更。");
+      };
       reader.readAsText(file);
+    }
+
+    function finishImport(confirmed) {
+      const pending = importJsonFile.pending;
+      delete importJsonFile.pending;
+      document.querySelector("#importPreview").close();
+      if (!pending) return;
+      if (!confirmed) { setStatus("已取消匯入，原有資料未變更。"); return; }
+      if (pending.userId !== currentUser?.id || pending.sourceMode !== state.activeMode) {
+        setStatus("帳號或模式已變更，請重新選擇檔案。原有資料未變更。"); return;
+      }
+      modeDataCache[pending.modeKey] = pending.data;
+      state.activeMode = pending.modeKey;
+      state.activeSheet = pending.data.activeSheet;
+      render();
+      window.clearTimeout(cloudSaveTimer);
+      setStatus(`已在畫面載入 ${modes[pending.modeKey].label} JSON，正在同步至雲端。`);
+      saveModeToCloud(pending.modeKey, { overwrite: true });
     }
 
     function updateComputedCells(tr, player) {
@@ -1550,6 +1608,9 @@
     document.querySelector("#downloadJson").addEventListener("click", downloadOutput);
     document.querySelector("#importJson").addEventListener("click", () => jsonFileEl.click());
     jsonFileEl.addEventListener("change", () => importJsonFile(jsonFileEl.files?.[0]));
+    document.querySelector("#cancelImport").addEventListener("click", () => finishImport(false));
+    document.querySelector("#confirmImport").addEventListener("click", () => finishImport(true));
+    document.querySelector("#importPreview").addEventListener("cancel", () => finishImport(false));
     document.querySelector("#resetSample").addEventListener("click", async () => {
       try {
         await loadModeData(state.activeMode, { forceSeed: true });
