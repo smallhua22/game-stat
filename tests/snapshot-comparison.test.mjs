@@ -119,3 +119,26 @@ test("chart handles zero, displayed precision, empty sets and extreme finite num
   assert.equal(ip.points[0].row.before, 32); assert.equal(ip.points[0].row.after, 34);
   assert.equal(comparison.format(ip.points[0].row.delta, "ip", true), "+0.2");
 });
+
+
+test("current-only chart uses actual values without fabricated earlier values or differences", () => {
+  const players = [{ name: " A ", hr: "8" }, { name: "A", hr: "-2" },
+    { name: "", hr: "0" }, { name: "Missing" }, { name: "Invalid", hr: "Infinity" }];
+  const original = JSON.stringify(players);
+  const rows = comparison.current(players, "hr"), chart = comparison.chart(rows, true);
+  assert.equal(rows.length, 5); assert.equal(chart.points.length, 3);
+  assert.ok(rows.every((row) => row.before === null && row.delta === null));
+  assert.equal(rows[2].name, "（未命名）");
+  assert.equal(chart.min, -2); assert.equal(chart.max, 8); assert.equal(chart.zero, 20);
+  assert.equal(chart.points[0].before, null); assert.equal(chart.points[0].after.width, 80);
+  assert.equal(chart.points[1].after.width, 20); assert.equal(chart.points[2].after.width, 0);
+  assert.equal(JSON.stringify(players), original);
+  assert.equal(comparison.chart(rows).points.length, 0);
+  assert.equal(comparison.current([{ name: "P", ip: "11.1" }], "ip")[0].after, 34);
+  assert.equal(comparison.current([{ name: "A", slashLine: ".3/.4/.5" }], "obp")[0].after, .4);
+  assert.equal(comparison.chart(comparison.current([{ name: "A", hr: "0.0004" }], "hr"), true).max, 0);
+  assert.equal(comparison.chart([], true).points.length, 0);
+  const extremes = comparison.chart(comparison.current([{ name: "A", hr: "-" + "1" + "0".repeat(308) },
+    { name: "B", hr: "1" + "0".repeat(308) }], "hr"), true);
+  assert.equal(extremes.zero, 50); assert.equal(extremes.points[0].after.width, 50);
+});

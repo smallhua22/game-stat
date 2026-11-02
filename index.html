@@ -432,7 +432,7 @@
     .performance-chart { margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
     .performance-chart h3 { margin: 0; font-size: 16px; }
     .performance-chart ol { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow: auto; }
-    .performance-chart li { padding: 10px 4px; border-top: 1px solid var(--line); }
+    .performance-chart li { padding: 10px 4px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
     .performance-chart strong { overflow-wrap: anywhere; }
     .performance-series { display: grid; grid-template-columns: 5em minmax(0, 1fr) 5em; gap: 8px; align-items: center; font-size: 12px; margin-top: 5px; }
     .performance-track { height: 12px; position: relative; background: #eef1f5; }
@@ -521,13 +521,14 @@
 
     <section class="workspace" aria-label="選手資料工作區">
       <details class="snapshot-panel">
-        <summary>成長比較（JSON 快照）</summary>
+        <summary>選手表現與成長比較</summary>
+        <p>未選快照時，顯示目前整張資料表（含未同步修改），不代表成長或排名。選擇較早 JSON 後才顯示兩版本比較。</p>
         <p id="snapshotHelp">選擇較早匯出的 JSON，比較同一資料表的選手紀錄；由此版本匯出的紀錄，改名後仍可配對。舊檔只依唯一姓名配對（忽略前後空白），同名或無法確認的紀錄維持未配對；可使用「配對舊快照選手」確認並儲存配對。差值為目前減去快照，不代表表現好壞。快照僅在此頁暫存，不會匯入或覆寫資料。</p>
         <p id="snapshotIpHelp">IP 輸入與顯示均使用棒球記法：10.2 表示 10 局又 2 個出局數；11.1 − 10.2 = +0.2（2 個出局數），不必輸入分數。</p>
         <div class="snapshot-tools">
           <button type="button" id="loadSnapshot">選擇較早快照</button>
           <input type="file" id="snapshotFile" accept="application/json,.json" aria-label="較早 JSON 快照" hidden>
-          <label for="snapshotMetric">比較欄位</label>
+          <label for="snapshotMetric">表現欄位</label>
           <select id="snapshotMetric" aria-describedby="snapshotHelp snapshotIpHelp"></select>
           <button type="button" id="linkSnapshot" disabled>配對舊快照選手</button>
           <button type="button" id="clearSnapshot" disabled>清除快照</button>
@@ -758,20 +759,20 @@
       "h", "hbp", "w", "l", "hld", "sv"
     ]);
 
-    function renderPerformanceChart(rows, field, label) {
-      const chart = SnapshotComparison.chart(rows);
+    function renderPerformanceChart(rows, field, label, currentOnly = false) {
+      const chart = SnapshotComparison.chart(rows, currentOnly);
       const list = document.querySelector("#performanceRows");
       list.replaceChildren();
-      document.querySelector("#performanceTitle").textContent = `${label}｜選手表現比較`;
+      document.querySelector("#performanceTitle").textContent = `${label}｜${currentOnly ? "目前選手表現" : "選手表現比較"}`;
       document.querySelector("#performanceScale").textContent = chart.points.length
-        ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 位已繪圖，${rows.length - chart.points.length} 位無法繪圖（詳見下表）。長條不代表表現好壞。`
-        : "沒有可繪圖的配對數值；缺值不當作零，詳見下表。";
+        ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 位已繪圖，${rows.length - chart.points.length} 位無法繪圖（${currentOnly ? "列於圖後" : "詳見下表"}）。長條不代表表現好壞。`
+        : currentOnly ? "沒有可繪圖的目前數值；缺值不當作零。" : "沒有可繪圖的配對數值；缺值不當作零，詳見下表。";
       chart.points.forEach((point) => {
         const item = document.createElement("li");
         const name = document.createElement("strong");
-        name.textContent = `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}`;
+        name.textContent = currentOnly ? point.row.name : `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}`;
         item.append(name);
-        [["before", "較早快照", ""], ["after", "目前", " current"]].forEach(([key, label, modifier]) => {
+        (currentOnly ? [["after", "目前", " current"]] : [["before", "較早快照", ""], ["after", "目前", " current"]]).forEach(([key, label, modifier]) => {
           const series = document.createElement("div");
           series.className = "performance-series";
           const caption = document.createElement("span"); caption.textContent = label;
@@ -787,6 +788,11 @@
         });
         list.append(item);
       });
+      if (currentOnly) rows.filter((row) => row.status).forEach((row) => {
+        const item = document.createElement("li");
+        item.textContent = `${row.name} · —（${row.status}）`;
+        list.append(item);
+      });
     }
 
     function renderSnapshotComparison() {
@@ -800,16 +806,18 @@
       document.querySelector("#downloadComparison").disabled = !snapshot;
       document.querySelector("#comparisonDownloadStatus").textContent = "";
       document.querySelector("#snapshotResults").hidden = !snapshot;
-      snapshotMetricEl.disabled = !snapshot;
+      snapshotMetricEl.disabled = false;
       document.querySelector("#linkSnapshot").disabled = !snapshot || !Object.values(snapshot.data.sheets).some((rows) => rows.some((p) => !p.rowId));
       snapshotRowsEl.replaceChildren();
-      document.querySelector("#performanceChart").hidden = !snapshot;
+      document.querySelector("#performanceChart").hidden = false;
       document.querySelector("#performanceRows").replaceChildren();
+      const field = snapshotMetricEl.value;
       if (!snapshot) {
-        snapshotStatusEl.textContent = `尚未選擇 ${modes[state.activeMode].label} 快照。`;
+        snapshotStatusEl.textContent = `${modes[state.activeMode].label}｜${getSheetConfig().label || state.activeSheet}｜目前資料，尚未選擇快照；不顯示差值。`;
+        renderPerformanceChart(SnapshotComparison.current(getActivePlayers(), field), field,
+          columns.find((column) => column.field === field).label, true);
         return;
       }
-      const field = snapshotMetricEl.value;
       const linked = LegacyLinking.apply(snapshot.data, getActiveModeData()?.legacyLinks?.[snapshot.key]);
       const rows = SnapshotComparison.compare(getActivePlayers(), linked.sheets[state.activeSheet], field);
       const comparable = rows.filter((row) => !row.status).length;
