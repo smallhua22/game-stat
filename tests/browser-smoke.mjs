@@ -219,7 +219,7 @@ try {
         await page.locator(`#rows tr:nth-child(${i + 1}) [data-field="${field}"]`).fill(current[i]);
       }
       await page.locator('#rows tr').first().locator('[data-field="name"]').fill('長姓名 Long player name / ' + '測試'.repeat(25));
-      await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing');
+      await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing' + 'x'.repeat(120));
       const baseline = await output();
       baseline.sheets[sheet].forEach((row, i) => { row[field] = sheet === 'hitters' ? ['3', '-4', '0'][i] : ['10.2', '0', '0'][i]; });
       await upload('#snapshotFile', baseline, 'chart.json');
@@ -246,12 +246,38 @@ try {
       assert.equal(fits, true);
       await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart-mobile.png` });
       await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.locator('#clearSnapshot').click();
+      assert.equal(await page.locator('#snapshotResults').isVisible(), false);
+      assert.equal(await page.locator('#downloadComparison').isDisabled(), true);
+      assert.equal(await page.locator('#snapshotMetric').isEnabled(), true);
+      assert.match(await page.locator('#performanceTitle').innerText(), /目前選手表現/);
+      assert.doesNotMatch(await page.locator('#performanceRows').innerText(), /差值|較早快照/);
+      assert.equal(await page.locator('#performanceRows .performance-bar').count(), 2);
+      assert.equal(await page.locator('#performanceRows li').count(), 3);
+      assert.match(await page.locator('#performanceRows li').last().innerText(), /Missing.*—.*缺少或無效/);
+      assert.equal(await page.locator('#performanceRows .performance-value').first().innerText(), current[0]);
+      await page.locator('#snapshotMetric').selectOption(sheet === 'hitters' ? 'avg' : 'era');
+      await page.locator('#snapshotMetric').selectOption(field);
+      await page.waitForTimeout(1200);
+      assert.deepEqual(await output(), dataBefore);
+      assert.equal(await page.evaluate(() => window.qaWrites.length), writesBefore);
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.locator('#performanceChart').evaluate((el) => window.scrollTo(0,
+          el.getBoundingClientRect().top + scrollY - document.querySelector('header').offsetHeight - 12));
+        const visible = await page.locator('#performanceChart').evaluate((el) =>
+          el.getBoundingClientRect().top >= document.querySelector('header').getBoundingClientRect().bottom &&
+          el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth);
+        assert.equal(visible, true);
+        await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-current-${width}.png` });
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
     }
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
-    await page.locator('#clearSnapshot').click();
+    assert.equal(await page.locator('#clearSnapshot').isDisabled(), true);
     assert.equal(await page.locator('#snapshotResults').isVisible(), false);
     assert.equal(await page.locator('#downloadComparison').isDisabled(), true);
-    assert.equal(await page.locator('#performanceChart').isVisible(), false);
+    assert.equal(await page.locator('#performanceChart').isVisible(), true);
     console.log(`PASS ${mode}: both sheets, lifecycle, download/import, matching/ambiguity, rejection, cancel/clear, stale upload`);
   }
   assert.deepEqual(errors, []);

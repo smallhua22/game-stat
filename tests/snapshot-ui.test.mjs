@@ -50,7 +50,7 @@ function harness() {
 
 test("real handlers render values, update with edits, switch sheets, and clear without saving", async () => {
   const h = harness();
-  assert.equal(h.el("#snapshotMetric").disabled, true);
+  assert.equal(h.el("#snapshotMetric").disabled, false);
   await h.upload(snapshot());
   const row = () => h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent);
   assert.deepEqual(row(), ["A", "3", "8", "+5", "可比較"]);
@@ -154,7 +154,7 @@ test("pending reads retain their mode without changing another mode's comparison
 
 test("performance chart follows real metric/edit/mode/sheet handlers and clear", async () => {
   const h = harness();
-  assert.equal(h.el("#performanceChart").hidden, true);
+  assert.equal(h.el("#performanceChart").hidden, false);
   const original = JSON.stringify(h.players);
   await h.upload(snapshot());
   assert.equal(h.el("#performanceChart").hidden, false);
@@ -172,13 +172,15 @@ test("performance chart follows real metric/edit/mode/sheet handlers and clear",
   assert.equal(item.children[0].textContent, "P · 差值 +0.2");
   assert.match(h.el("#performanceScale").textContent, /長度依出局數/);
   h.state.activeMode = "prospi"; h.render();
-  assert.equal(h.el("#performanceChart").hidden, true);
-  assert.equal(h.el("#performanceRows").children.length, 0);
+  assert.equal(h.el("#performanceChart").hidden, false);
+  assert.equal(h.el("#performanceRows").children.length, 1);
+  assert.equal(h.el("#performanceRows").children[0].children.length, 2);
   await h.upload(snapshot("3", "prospi"));
   assert.equal(h.el("#performanceChart").hidden, false);
   h.clear();
-  assert.equal(h.el("#performanceChart").hidden, true);
-  assert.equal(h.el("#performanceRows").children.length, 0);
+  assert.equal(h.el("#performanceChart").hidden, false);
+  assert.equal(h.el("#performanceRows").children.length, 1);
+  assert.match(h.el("#performanceTitle").textContent, /目前選手表現/);
 });
 
 
@@ -192,4 +194,26 @@ test("chart and detail table reuse saved legacy links after a player rename", as
   assert.equal(h.el("#performanceRows").children[0].children[0].textContent, "Renamed · 差值 +5");
   assert.deepEqual(h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent),
     ["Renamed", "3", "8", "+5", "可比較"]);
+});
+
+
+test("current dashboard retains zero and missing records, no fabricated baseline or delta", () => {
+  const h = harness();
+  h.players.hitters.push({ name: "Zero", hr: "0" }, { name: "Missing", hr: "" });
+  const original = JSON.stringify(h.players);
+  h.render();
+  const rows = h.el("#performanceRows").children;
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].children[0].textContent, "A");
+  assert.equal(rows[0].children.length, 2);
+  assert.equal(rows[1].children[1].children[2].textContent, "0");
+  assert.match(rows[2].textContent, /Missing.*—.*缺少或無效/);
+  assert.equal(h.el("#snapshotResults").hidden, true);
+  assert.equal(h.el("#downloadComparison").disabled, true);
+  assert.equal(h.el("#linkSnapshot").disabled, true);
+  assert.match(h.el("#snapshotStatus").textContent, /不顯示差值/);
+  h.players.hitters[0].hr = "9"; h.render();
+  assert.equal(h.el("#performanceRows").children[0].children[1].children[2].textContent, "9");
+  h.players.hitters[0].hr = "8";
+  assert.equal(JSON.stringify(h.players), original);
 });
