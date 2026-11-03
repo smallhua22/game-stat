@@ -90,7 +90,7 @@ test("missing fields never turn into zero changes or false improvement", () => {
 test("chart shares a zero-inclusive scale, preserves sign and does not mutate rows", () => {
   const rows = [{ name: "A", before: 4, after: 8, delta: 4, status: "" },
     { name: "B", before: -4, after: 0, delta: 4, status: "" },
-    { name: "Unknown", before: null, after: 1000, delta: null, status: "missing" }];
+    { name: "Unknown", before: null, after: null, delta: null, status: "missing" }];
   const original = JSON.stringify(rows);
   const chart = comparison.chart(rows);
   assert.equal(chart.min, -4); assert.equal(chart.max, 8);
@@ -114,8 +114,40 @@ test("chart handles zero, displayed precision, empty sets and extreme finite num
   assert.equal(extreme.zero, 50);
   assert.equal(extreme.points[0].before.width, 50);
   assert.equal(extreme.points[1].after.width, 50);
-  assert.equal(comparison.chart([row(-1e308, 1e308)]).points.length, 0);
+  assert.equal(comparison.chart([row(-1e308, 1e308)]).points[0].row.delta, null);
   const ip = comparison.chart(comparison.compare([{ name: "P", ip: "11.1" }], [{ name: "P", ip: "10.2" }], "ip"));
   assert.equal(ip.points[0].row.before, 32); assert.equal(ip.points[0].row.after, 34);
   assert.equal(comparison.format(ip.points[0].row.delta, "ip", true), "+0.2");
+});
+
+
+test("chart retains single-sided records without inventing zero or growth", () => {
+  const rows = comparison.compare([{ name: "New", hr: "0" }, { name: "Known", hr: "" },
+    { name: "Duplicate", hr: "8" }, { name: "Duplicate", hr: "9" }],
+    [{ name: "Removed", hr: "-4" }, { name: "Known", hr: "2" }, { name: "Duplicate", hr: "6" }], "hr");
+  const copy = JSON.stringify(rows), chart = comparison.chart(rows);
+  assert.equal(chart.points.length, 6);
+  assert.equal(chart.min, -4); assert.equal(chart.max, 9);
+  for (const point of chart.points) {
+    assert.equal(point.row.delta, null);
+    assert.equal([point.before, point.after].filter(Boolean).length, 1);
+    assert.ok(point.row.status);
+  }
+  assert.equal(chart.points[0].before, null);
+  assert.equal(chart.points[0].after.width, 0);
+  assert.equal(chart.points[1].after, null);
+  assert.equal(chart.points[4].before.left, 0);
+  assert.equal(JSON.stringify(rows), copy);
+});
+
+test("partial charts preserve rates, IP outs and all-missing exclusion", () => {
+  const ip = comparison.chart(comparison.compare([{ name: "New", ip: "0.2" }], [], "ip"));
+  assert.equal(ip.max, 2); assert.equal(comparison.format(ip.points[0].row.after, "ip"), "0.2");
+  const rate = comparison.chart(comparison.compare([{ name: "New", slashLine: ".3004/.4/.5" }], [], "avg"));
+  assert.equal(rate.max, .3); assert.equal(rate.points[0].row.delta, null);
+  assert.deepEqual(comparison.chart([{ before: NaN, after: Infinity, delta: null }]).points, []);
+  const badDelta = comparison.chart([{ before: -1e308, after: 1e308, delta: Infinity, status: "" }]);
+  assert.equal(badDelta.zero, 50);
+  assert.match(badDelta.points[0].row.status, /超出/);
+  assert.equal(badDelta.points[0].row.delta, null);
 });

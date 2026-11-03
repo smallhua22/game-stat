@@ -219,15 +219,26 @@ try {
         await page.locator(`#rows tr:nth-child(${i + 1}) [data-field="${field}"]`).fill(current[i]);
       }
       await page.locator('#rows tr').first().locator('[data-field="name"]').fill('長姓名 Long player name / ' + '測試'.repeat(25));
-      await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing');
+      await page.locator('#rows tr').nth(2).locator('[data-field="name"]').fill('Missing' + 'x'.repeat(120));
       const baseline = await output();
       baseline.sheets[sheet].forEach((row, i) => { row[field] = sheet === 'hitters' ? ['3', '-4', '0'][i] : ['10.2', '0', '0'][i]; });
+      // Different identities must remain distinct single-sided chart records, not a growth pair.
+      baseline.sheets[sheet].push({ name: 'Removed', rowId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', [field]: '4' });
+      const added = baseline.sheets[sheet][1];
+      added.rowId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
       await upload('#snapshotFile', baseline, 'chart.json');
       await page.waitForFunction(() => document.querySelector('#snapshotStatus').textContent.includes('chart.json'));
       await page.locator('#snapshotMetric').selectOption(field);
-      assert.equal(await page.locator('#performanceRows li').count(), 2);
-      assert.match(await page.locator('#performanceScale').innerText(), /2 位已繪圖，1 位無法繪圖/);
+      assert.equal(await page.locator('#performanceRows li').count(), 5);
+      assert.match(await page.locator('#performanceScale').innerText(), /5 筆已繪圖，0 筆無可用數值/);
       assert.match(await page.locator('#performanceRows li').first().innerText(), sheet === 'hitters' ? /差值 \+5/ : /差值 \+0.2/);
+      const items = page.locator('#performanceRows li');
+      assert.match(await items.nth(1).innerText(), /差值 —.*快照無此選手/);
+      assert.equal(await items.nth(1).locator('.performance-bar').count(), 1);
+      assert.equal(await items.nth(2).locator('.performance-unavailable').count(), 1);
+      assert.match(await items.nth(2).innerText(), /缺少或無效數值/);
+      assert.match(await items.last().innerText(), /Removed.*差值 —.*目前無此選手/);
+      assert.equal(await items.last().locator('.performance-bar').count(), 1);
       const bars = await page.locator('#performanceRows li').first().locator('.performance-bar').evaluateAll((els) => els.map((el) => parseFloat(el.style.width)));
       const ratio = sheet === 'hitters' ? 3 / 8 : 32 / 34;
       assert.ok(Math.abs(bars[0] / bars[1] - ratio) < .0001);
