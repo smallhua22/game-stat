@@ -436,6 +436,7 @@
     .performance-chart strong { overflow-wrap: anywhere; }
     .performance-series { display: grid; grid-template-columns: 5em minmax(0, 1fr) 5em; gap: 8px; align-items: center; font-size: 12px; margin-top: 5px; }
     .performance-track { height: 12px; position: relative; background: #eef1f5; }
+    .performance-unavailable { color: var(--muted); font-style: italic; }
     .performance-bar { position: absolute; height: 100%; background: #64748b; }
     .performance-bar.current { background: #2563eb; }
     .performance-zero { position: absolute; height: 16px; top: -2px; border-left: 1px solid #172033; }
@@ -764,23 +765,28 @@
       list.replaceChildren();
       document.querySelector("#performanceTitle").textContent = `${label}｜選手表現比較`;
       document.querySelector("#performanceScale").textContent = chart.points.length
-        ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 位已繪圖，${rows.length - chart.points.length} 位無法繪圖（詳見下表）。長條不代表表現好壞。`
-        : "沒有可繪圖的配對數值；缺值不當作零，詳見下表。";
+        ? `共用刻度 ${SnapshotComparison.format(chart.min, field)} 至 ${SnapshotComparison.format(chart.max, field)}；直線為 0${field === "ip" ? "，長度依出局數" : ""}。${chart.points.length} 筆已繪圖，${rows.length - chart.points.length} 筆無可用數值（詳見下表）。缺少的一側不畫長條；未配對紀錄不計差值，長條不代表表現好壞。`
+        : "沒有可繪圖的數值；缺值不當作零，詳見下表。";
       chart.points.forEach((point) => {
         const item = document.createElement("li");
         const name = document.createElement("strong");
-        name.textContent = `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}`;
+        name.textContent = `${point.row.name} · 差值 ${SnapshotComparison.format(point.row.delta, field, true)}${point.row.status ? `（${point.row.status}）` : ""}`;
         item.append(name);
         [["before", "較早快照", ""], ["after", "目前", " current"]].forEach(([key, label, modifier]) => {
           const series = document.createElement("div");
           series.className = "performance-series";
           const caption = document.createElement("span"); caption.textContent = label;
           const track = document.createElement("span"); track.className = "performance-track";
-          const bar = document.createElement("span"); bar.className = `performance-bar${modifier}`;
-          bar.style = `left:${point[key].left}%;width:${point[key].width}%`;
-          const zero = document.createElement("span"); zero.className = "performance-zero";
-          zero.style = `left:${chart.zero}%`;
-          track.append(bar, zero);
+          if (point[key]) {
+            const bar = document.createElement("span"); bar.className = `performance-bar${modifier}`;
+            bar.style = `left:${point[key].left}%;width:${point[key].width}%`;
+            const zero = document.createElement("span"); zero.className = "performance-zero";
+            zero.style = `left:${chart.zero}%`;
+            track.append(bar, zero);
+          } else {
+            track.className = "performance-unavailable";
+            track.textContent = "無可用數值";
+          }
           const value = document.createElement("span"); value.className = "performance-value";
           value.textContent = SnapshotComparison.format(point.row[key], field);
           series.append(caption, track, value); item.append(series);

@@ -164,8 +164,11 @@ test("performance chart follows real metric/edit/mode/sheet handlers and clear",
   assert.equal(item.children[2].children[2].textContent, "8");
   assert.equal(JSON.stringify(h.players), original);
   h.players.hitters[0].hr = ""; h.render();
-  assert.equal(h.el("#performanceRows").children.length, 0);
-  assert.match(h.el("#performanceScale").textContent, /沒有可繪圖/);
+  assert.equal(h.el("#performanceRows").children.length, 1);
+  item = h.el("#performanceRows").children[0];
+  assert.match(item.children[0].textContent, /差值 —（缺少或無效數值）/);
+  assert.equal(item.children[2].children[1].textContent, "無可用數值");
+  assert.equal(item.children[2].children[2].textContent, "—");
   h.state.activeSheet = "pitchers"; h.render();
   h.el("#snapshotMetric").value = "ip"; h.el("#snapshotMetric").listeners.change();
   item = h.el("#performanceRows").children[0];
@@ -192,4 +195,21 @@ test("chart and detail table reuse saved legacy links after a player rename", as
   assert.equal(h.el("#performanceRows").children[0].children[0].textContent, "Renamed · 差值 +5");
   assert.deepEqual(h.el("#snapshotRows").children[0].children.map((cell) => cell.textContent),
     ["Renamed", "3", "8", "+5", "可比較"]);
+});
+
+
+test("partial comparison labels distinguish unpaired records and preserve detail data", async () => {
+  const h = harness(), earlier = snapshot();
+  h.players.hitters.push({ name: "New", hr: "0" });
+  earlier.sheets.hitters.push({ name: "Removed", hr: "6" });
+  await h.upload(earlier);
+  const items = h.el("#performanceRows").children;
+  assert.equal(items.length, 3);
+  assert.match(items[1].children[0].textContent, /New · 差值 —（快照無此選手）/);
+  assert.match(items[2].children[0].textContent, /Removed · 差值 —（目前無此選手）/);
+  assert.equal(items[1].children[1].children[1].className, "performance-unavailable");
+  assert.equal(items[1].children[2].children[2].textContent, "0");
+  assert.deepEqual(h.el("#snapshotRows").children[1].children.map((cell) => cell.textContent),
+    ["New", "—", "0", "—", "快照無此選手"]);
+  assert.match(h.el("#performanceScale").textContent, /3 筆已繪圖/);
 });
