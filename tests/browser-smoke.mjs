@@ -251,11 +251,27 @@ try {
       await page.waitForTimeout(1200);
       assert.deepEqual(await output(), dataBefore);
       assert.equal(await page.evaluate(() => window.qaWrites.length), writesBefore);
-      await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart.png` });
-      await page.setViewportSize({ width: 390, height: 844 });
-      const fits = await page.locator('#performanceChart').evaluate((el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth);
-      assert.equal(fits, true);
-      await page.locator('#performanceChart').screenshot({ path: `browser-artifacts/${mode}-${sheet}-chart-mobile.png` });
+      for (const [layout, width, height] of [['desktop', 1440, 1000], ['mobile', 390, 844]]) {
+        await page.setViewportSize({ width, height });
+        const chart = page.locator('#performanceChart');
+        await chart.evaluate((el) => window.scrollBy(0,
+          el.getBoundingClientRect().top - document.querySelector('.topbar').getBoundingClientRect().bottom - 12));
+        assert.ok(await chart.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return el.scrollWidth <= el.clientWidth && r.right <= innerWidth && r.bottom <= innerHeight &&
+            r.top >= document.querySelector('.topbar').getBoundingClientRect().bottom;
+        }));
+        // Scroll the real list, without changing product styles; inspect every partial record.
+        for (let i = 0; i < await items.count(); i++) {
+          assert.ok(await items.nth(i).evaluate((el) => {
+            const list = el.parentElement;
+            list.scrollTop += el.getBoundingClientRect().top - list.getBoundingClientRect().top;
+            const row = el.getBoundingClientRect(), bounds = list.getBoundingClientRect();
+            return row.top >= bounds.top - 1 && row.bottom <= bounds.bottom + 1;
+          }));
+          await chart.screenshot({ path: `browser-artifacts/${mode}-${sheet}-${layout}-row-${i + 1}.png` });
+        }
+      }
       await page.setViewportSize({ width: 1440, height: 1000 });
     }
     await page.screenshot({ path: `browser-artifacts/${mode}.png`, fullPage: true });
