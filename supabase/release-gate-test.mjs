@@ -1,73 +1,59 @@
 #!/usr/bin/env node
-// Automated version of the manual browser-console release gate described in
-// docs/spec-supabase-login.md#release-gate-test. Confirms an unauthenticated
-// (anon-key-only) caller is denied read, write, and RPC access to
-// public.user_tables before every deploy. Uses only the public anon key
-// already committed in index.html — no credentials needed.
-
+// Only explicit PostgreSQL permission denials establish the anonymous-access gate.
+// Importing this module is safe: network requests run only through the CLI or runGate.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const indexPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "index.html");
-const html = readFileSync(indexPath, "utf8");
-
-function extractConst(name) {
-  const match = html.match(new RegExp(`const ${name}\\s*=\\s*"([^"]+)"`));
-  if (!match) throw new Error(`Could not find ${name} in index.html`);
-  return match[1];
-}
-
-const SUPABASE_URL = extractConst("SUPABASE_URL");
-const SUPABASE_ANON_KEY = extractConst("SUPABASE_ANON_KEY");
-
-const headers = {
-  apikey: SUPABASE_ANON_KEY,
-  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-  "Content-Type": "application/json",
-};
-
-async function expectDenied(label, request) {
-  const res = await request();
-  const body = await res.text();
-  if (res.ok) {
-    console.error(`FAIL: ${label} — expected denial, got ${res.status}\n${body}`);
+export async function expectDenied(label, request, log = console) {
+  try {
+    const res = await request();
+    let body;
+    try { body = await res.json(); } catch { /* Non-JSON errors are inconclusive. */ }
+    const denied = (res.status === 401 || res.status === 403) && body?.code === "42501";
+    // Never print response bodies: a failed gate may have returned private records.
+    if (denied) log.log(`OK: ${label} — PostgreSQL permission denied (${res.status}, 42501)`);
+    else log.error(`FAIL: ${label} — expected permission denial, got HTTP ${res.status}`);
+    return denied;
+  } catch {
+    log.error(`FAIL: ${label} — request or response failed; access policy is unverified`);
     return false;
   }
-  console.log(`OK:   ${label} — denied (${res.status})`);
-  return true;
 }
 
-const checks = [
-  () => expectDenied("anon SELECT on user_tables", () =>
-    fetch(`${SUPABASE_URL}/rest/v1/user_tables?select=*`, { headers })),
-
-  () => expectDenied("anon INSERT into user_tables", () =>
-    fetch(`${SUPABASE_URL}/rest/v1/user_tables`, {
+export async function runGate(url, key, { fetchImpl = fetch, log = console } = {}) {
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+  const request = (endpoint, options = {}) => fetchImpl(`${url}/rest/v1/${endpoint}`, {
+    ...options, headers, redirect: "error", signal: AbortSignal.timeout(15000),
+  });
+  const checks = [
+    ["anon SELECT on user_tables", () => request("user_tables?select=*")],
+    ["anon INSERT into user_tables", () => request("user_tables", {
       method: "POST",
-      headers,
-      body: JSON.stringify({
-        user_id: "00000000-0000-0000-0000-000000000000",
-        table_id: "pawapuro",
-        data: {},
-      }),
-    })),
+      body: JSON.stringify({ user_id: "00000000-0000-0000-0000-000000000000", table_id: "pawapuro", data: {} }),
+    })],
+    ["anon RPC delete_account", () => request("rpc/delete_account", { method: "POST", body: "{}" })],
+  ];
+  const results = [];
+  for (const [label, request] of checks) results.push(await expectDenied(label, request, log));
+  const passed = results.every(Boolean);
+  if (passed) log.log("Release gate PASSED — all three requests received explicit permission denials.");
+  else log.error("Release gate FAILED — do NOT deploy. Denial was not established for every request.");
+  return passed;
+}
 
-  () => expectDenied("anon RPC delete_account", () =>
-    fetch(`${SUPABASE_URL}/rest/v1/rpc/delete_account`, {
-      method: "POST",
-      headers,
-      body: "{}",
-    })),
-];
-
-const results = [];
-for (const check of checks) results.push(await check());
-
-if (results.every(Boolean)) {
-  console.log("\nRelease gate PASSED — anon access is denied on all three checks.");
-  process.exit(0);
-} else {
-  console.error("\nRelease gate FAILED — do NOT deploy. See failures above.");
-  process.exit(1);
+const filename = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === filename) {
+  try {
+    const html = readFileSync(path.join(path.dirname(filename), "..", "index.html"), "utf8");
+    const extract = name => {
+      const match = html.match(new RegExp(`const ${name}\\s*=\\s*"([^"]+)"`));
+      if (!match) throw new Error(`Missing ${name}`);
+      return match[1];
+    };
+    process.exitCode = await runGate(extract("SUPABASE_URL"), extract("SUPABASE_ANON_KEY")) ? 0 : 1;
+  } catch {
+    console.error("Release gate FAILED — configuration could not be read; do NOT deploy.");
+    process.exitCode = 1;
+  }
 }
